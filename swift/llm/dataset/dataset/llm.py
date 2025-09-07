@@ -385,6 +385,11 @@ class MTEBRerankPreprocessor(ResponsePreprocessor):
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
 
+        ### we don't need \n in the end of pos or neg!!!
+        positives = [s.rstrip('\n') for s in positives]
+        negatives = [s.rstrip('\n') for s in negatives]
+
+
         expanded_rows = []
         for positive in positives:
             expanded_row = {'query': query, 'response': positive, 'rejected_response': negatives}
@@ -392,6 +397,13 @@ class MTEBRerankPreprocessor(ResponsePreprocessor):
 
         return expanded_rows
 
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/hisense-reranking',
+        hf_dataset_id='mteb/hisense-reranking',
+        split=['train'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
 
 register_dataset(
     DatasetMeta(
