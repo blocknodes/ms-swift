@@ -185,6 +185,8 @@ class RerankerTrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function
+        #tokenizer = getattr(self, 'processing_class', None)
+        #import pdb;pdb.set_trace()
         if self.compute_loss_func is not None:
             # Get labels and compute outputs
             labels = inputs.get('labels')

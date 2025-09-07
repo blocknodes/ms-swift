@@ -70,7 +70,44 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
+    def __init__(self,
+            processor,
+            template_meta: 'TemplateMeta',
+            default_system: Optional[str] = None,
+            max_length: Optional[int] = None,
+            *,
+            truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+            max_pixels: Optional[int] = None,
+            agent_template: Optional[str] = None,
+            norm_bbox: Literal['norm1000', 'none', None] = None,
+            use_chat_template: bool = True,
+            remove_unused_columns: bool = True,
+            # only for train
+            padding_free: bool = False,
+            padding_side: Literal['left', 'right'] = 'right',
+            loss_scale: str = 'default',
+            sequence_parallel_size: int = 1,
+            # infer/deploy
+            response_prefix: Optional[str] = None,
+            template_backend: Literal['swift', 'jinja'] = 'swift',):
+        super().__init__(processor,
+            template_meta,
+            default_system,
+            max_length,
+            truncation_strategy=truncation_strategy,
+            max_pixels=max_pixels,
+            agent_template=agent_template,
+            norm_bbox=norm_bbox,
+            use_chat_template=use_chat_template,
+            remove_unused_columns=remove_unused_columns,
+            padding_free=padding_free,
+            padding_side=padding_side,
+            loss_scale=loss_scale,
+            sequence_parallel_size=sequence_parallel_size,
+            response_prefix=response_prefix,
+            template_backend=template_backend)
 
+        self.padding_side = 'left'
     def _preprocess_inputs_reranker(self, inputs: StdTemplateInputs) -> None:
         super()._preprocess_inputs_reranker(inputs)
         query = inputs.messages[-2]['content']
