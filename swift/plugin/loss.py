@@ -175,10 +175,10 @@ def calculate_infonce_metrics(embeddings, labels):
 
 def calculate_reranker_metrics(logits, labels):
     """
-    Calculate MRR and NDCG metrics for reranker.
+    Calculate MRR, NDCG, hit@1 and hit@3 metrics for reranker.
 
     This function first groups the data based on query boundaries (identified by
-    positive samples), then calculates MRR and NDCG for each group independently,
+    positive samples), then calculates metrics for each group independently,
     and finally returns the mean across all queries.
 
     Data format:
@@ -190,7 +190,7 @@ def calculate_reranker_metrics(logits, labels):
         labels: Binary labels (1 for positive, 0 for negative) [batch_size]
 
     Returns:
-        dict: Dictionary containing MRR and NDCG metrics averaged across all queries
+        dict: Dictionary containing MRR, NDCG, hit@1 and hit@3 metrics averaged across all queries
     """
     import numpy as np
 
@@ -202,12 +202,13 @@ def calculate_reranker_metrics(logits, labels):
 
     logits = np.array(logits).flatten()
     labels = np.array(labels).flatten()
+    labels = (labels >= 500).astype(int)
 
     # Step 1: Find all positive sample indices (query boundaries)
     positive_indices = np.where(labels == 1)[0]
 
     if len(positive_indices) == 0:
-        return {'mrr': 0.0, 'ndcg': 0.0}
+        return {'mrr': 0.0, 'ndcg': 0.0, 'hit@1': 0.0, 'hit@3': 0.0}
 
     # Step 2: Split into groups (queries)
     query_groups = []
@@ -230,6 +231,10 @@ def calculate_reranker_metrics(logits, labels):
     # Step 3: Calculate metrics for each query independently
     mrr_scores = []
     ndcg_scores = []
+    hit1_scores = []
+    hit3_scores = []
+
+    #import pdb;pdb.set_trace()
 
     for query_idx, (query_logits, query_labels) in enumerate(query_groups):
         # Skip groups that are too small (need at least 1 positive + 1 negative)
@@ -252,7 +257,13 @@ def calculate_reranker_metrics(logits, labels):
         mrr = 1.0 / pos_rank
         mrr_scores.append(mrr)
 
-        # Step 3d: Calculate NDCG for this query
+        # Step 3d: Calculate hit@1 and hit@3 for this query
+        hit1 = 1.0 if pos_rank <= 1 else 0.0
+        hit3 = 1.0 if pos_rank <= 3 else 0.0
+        hit1_scores.append(hit1)
+        hit3_scores.append(hit3)
+
+        # Step 3e: Calculate NDCG for this query
         def calculate_ndcg_single_query(relevance_scores, ranking):
             """Calculate NDCG for a single query"""
             # Calculate DCG (Discounted Cumulative Gain)
@@ -280,14 +291,18 @@ def calculate_reranker_metrics(logits, labels):
     # Step 4: Calculate mean metrics across all valid queries
     if len(mrr_scores) == 0:
         print('No valid queries found for metric calculation')
-        return {'mrr': 0.0, 'ndcg': 0.0}
+        return {'mrr': 0.0, 'ndcg': 0.0, 'hit@1': 0.0, 'hit@3': 0.0}
 
     mean_mrr = np.mean(mrr_scores)
     mean_ndcg = np.mean(ndcg_scores)
+    mean_hit1 = np.mean(hit1_scores)
+    mean_hit3 = np.mean(hit3_scores)
 
     return {
         'mrr': mean_mrr,
         'ndcg': mean_ndcg,
+        'hit@1': mean_hit1,
+        'hit@3': mean_hit3
     }
 
 
@@ -493,12 +508,33 @@ def generative_reranker_loss(outputs,
     # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
     binary_logits = torch.stack([negative_logits, positive_logits], dim=1)
 
-    # Convert labels to the correct device and type
-    binary_labels = labels.to(binary_logits.device).long()
 
-    # Compute cross entropy loss
-    loss_fct = CrossEntropyLoss()
-    loss = loss_fct(binary_logits, binary_labels)
+    # 等价实现：使用Softmax + KLDivLoss
+    # 1. 计算logits的softmax得到概率分布
+    probabilities = F.softmax(binary_logits, dim=1)  # [batch_size, 2]
+
+    # 2. 计算概率的对数（KLDivLoss需要）
+    log_probabilities = torch.log(probabilities)  # [batch_size, 2]
+
+    # 3. 创建目标分布（one-hot编码）
+    labels = labels / 1000
+    binary_labels = labels.to(binary_logits.device, dtype=torch.float32)
+    batch_size = binary_labels.size(0)
+
+    expanded_labels = torch.zeros(batch_size, 2, device=binary_logits.device, dtype=torch.float32)
+
+
+    expanded_labels[: ,0] = 1 - binary_labels
+    expanded_labels[ :,1] = binary_labels
+
+    # 4. 使用KL散度损失
+    #import pdb;pdb.set_trace()
+
+    #print(f'### probabilities:{probabilities}#####')
+    #print(f'### expanded_labels:{expanded_labels}#####')
+    loss_fct = torch.nn.KLDivLoss(reduction='batchmean')
+    loss = loss_fct(log_probabilities, expanded_labels)
+
 
     return loss
 

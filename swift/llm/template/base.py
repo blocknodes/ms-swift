@@ -450,8 +450,23 @@ class Template(ProcessorMixin):
             _encoded.pop('labels', None)
         return _encoded
 
+    def _split_content_and_score(self, s):
+        # 找到最后一个<和>的位置
+        start = s.rfind('<') + 1  # +1 是为了跳过<本身
+        end = s.rfind('>')
+
+        # 提取中间的内容
+        number_str = s[start:end]
+        # 转换为浮点数（如果需要）
+        number = float(number_str)
+        return s[:start-1], number
+
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         inputs = inputs.chosen  # TODO: refactor
+        content, score = self._split_content_and_score(inputs.messages[-1]['content'])
+        inputs.messages[-1]['content'] = content
+        #print(inputs)
+        #raise
         self._preprocess_inputs_reranker(inputs)
         _encoded = {}
         labels = []
@@ -466,10 +481,15 @@ class Template(ProcessorMixin):
         for key in positive_encoded:
             _encoded[f'positive_{key}'] = positive_encoded[key]
             _encoded[f'negative_{key}'] = []
-        labels.append(1)
+        labels.append(score*1000)
+
+       # raise
+        #import pdb;pdb.set_trace()
 
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
         for i in range(rejected_len):
+            content, score = self._split_content_and_score(inputs.rejected_response[i])
+            inputs.rejected_response[i] = content
             negative = deepcopy(inputs)
             if '{doc}' in negative.messages[-2]['content']:
                 negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
@@ -481,7 +501,7 @@ class Template(ProcessorMixin):
             negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
                 _encoded[f'negative_{key}'].append(negative_encoded[key])
-            labels.append(0)
+            labels.append(score*1000)
 
         _encoded['labels'] = labels
         return _encoded
