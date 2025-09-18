@@ -381,13 +381,23 @@ register_dataset(
 class MTEBRerankPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        #raise
+
         query = row['query']
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
 
+        if isinstance(positives[0], dict) and 'content' in positives[0].keys():
+
+            positives = [f"{s['content']}<1>"for s in positives]
+            negatives = [f"{s['content']}<{s['score']}>"for s in negatives]
+            #print(positives[0])
+
         ### we don't need \n in the end of pos or neg!!!
-        positives = [s.rstrip('\n') for s in positives]
-        negatives = [s.rstrip('\n') for s in negatives]
+        #positives = [s.rstrip('\n') for s in positives]
+        #negatives = [s.rstrip('\n') for s in negatives]
+        #positives = [s.split('\n', 1)[-1] if '\n' in s else s for s in positives]
+        #negatives = [s.split('\n', 1)[-1] if '\n' in s else s for s in negatives]
 
 
         expanded_rows = []
@@ -401,7 +411,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='MTEB/hisense-reranking',
         hf_dataset_id='mteb/hisense-reranking',
-        split=['train'],
+        split=['train','validation'],
         preprocess_func=MTEBRerankPreprocessor(),
         tags=['rerank', '🔥']))
 
