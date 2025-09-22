@@ -3,6 +3,8 @@ import logging
 from typing import List, Dict, Generator, Optional, Tuple
 import argparse
 from tqdm import tqdm  # 用于显示进度条
+import concurrent.futures
+from functools import partial
 
 import requests
 
@@ -132,104 +134,122 @@ def read_jsonl(file_path: str) -> Generator[Dict, None, None]:
                 yield json.loads(line)
 
 
-def process_jsonl_line_by_line(input_file: str, output_file: str, base_url: str,
-                              instruction: Optional[str] = None,
-                              initial_batch_size: int = 32) -> None:
-    """逐行处理JSONL文件，每处理一行就写入一行结果"""
+def process_single_item(item, client, instruction, initial_batch_size):
+    """处理单个JSONL条目"""
+    try:
+        query = item.get('query', '')
+        pos_docs = item.get('pos', [])
+        neg_docs = item.get('neg', [])
+
+        pos_docs = [s['content'].rstrip('\n') for s in pos_docs]
+        neg_docs = [s['content'].rstrip('\n') for s in neg_docs]
+
+        if not query:
+            logging.warning("跳过没有query的条目")
+            return None, False, False
+
+        # 对正样本打分
+        pos_with_scores = []
+        pos_success = True
+        if pos_docs:
+            raw_pos_scores, pos_success = client.rerank(
+                query, pos_docs, instruction,
+                initial_batch_size=initial_batch_size
+            )
+            pos_scores = [(score + 1) / 2 for score in raw_pos_scores]
+
+            if len(pos_scores) == len(pos_docs):
+                pos_with_scores = [
+                    {'content': doc, 'score': score}
+                    for doc, score in zip(pos_docs, pos_scores)
+                ]
+            else:
+                logging.warning(f"正样本分数数量({len(pos_scores)})与文档数量({len(pos_docs)})不一致")
+                pos_success = False
+
+        # 对负样本打分
+        neg_with_scores = []
+        neg_success = True
+        if neg_docs:
+            raw_neg_scores, neg_success = client.rerank(
+                query, neg_docs, instruction,
+                initial_batch_size=initial_batch_size
+            )
+            neg_scores = [score / 2 for score in raw_neg_scores]
+
+            if len(neg_scores) == len(neg_docs):
+                neg_with_scores = [
+                    {'content': doc, 'score': score}
+                    for doc, score in zip(neg_docs, neg_scores)
+                ]
+            else:
+                logging.warning(f"负样本分数数量({len(neg_scores)})与文档数量({len(neg_docs)})不一致")
+                neg_success = False
+
+        # 构建结果对象
+        result_item = {
+            'query': query,
+            'pos': pos_with_scores,
+            'neg': neg_with_scores
+        }
+
+        # 保留原始数据中的其他字段
+        for key, value in item.items():
+            if key not in result_item:
+                result_item[key] = value
+
+        return result_item, True, (pos_success and neg_success)
+
+    except Exception as e:
+        logging.error(f"处理条目时出错: {str(e)}", exc_info=True)
+        return None, False, False
+
+
+def process_jsonl_concurrent(input_file: str, output_file: str, base_url: str,
+                             instruction: Optional[str] = None,
+                             initial_batch_size: int = 32,
+                             max_workers: int = 15) -> None:
+    """并发处理JSONL文件，使用线程池实现并行处理"""
     client = RerankClient(base_url=base_url)
 
-    # 计算总条目数，用于进度条
-    total_items = sum(1 for _ in read_jsonl(input_file))
+    # 收集所有条目以便并发处理
+    all_items = list(read_jsonl(input_file))
+    total_items = len(all_items)
+
     processed_count = 0
     failed_count = 0
     partial_failed_count = 0  # 部分文档处理失败的条目数
 
-    # 打开输入文件和输出文件
-    with open(output_file, 'w', encoding='utf-8') as out_f:
-        # 重新读取并处理每一行
-        for item in tqdm(read_jsonl(input_file), total=total_items, desc="处理进度"):
-            try:
-                query = item.get('query', '')
-                pos_docs = item.get('pos', [])
-                neg_docs = item.get('neg', [])
+    # 创建偏函数，固定部分参数
+    process_func = partial(
+        process_single_item,
+        client=client,
+        instruction=instruction,
+        initial_batch_size=initial_batch_size
+    )
 
+    # 使用线程池并发处理
+    with open(output_file, 'w', encoding='utf-8') as out_f, \
+         concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
 
-                pos_docs = [s['content'].rstrip('\n') for s in pos_docs]
-                neg_docs = [s['content'].rstrip('\n') for s in neg_docs]
+        # 提交所有任务
+        futures = [executor.submit(process_func, item) for item in all_items]
 
-                if not query:
-                    logging.warning("跳过没有query的条目")
-                    failed_count += 1
-                    continue
+        # 处理结果
+        for future in tqdm(concurrent.futures.as_completed(futures), total=total_items, desc="处理进度"):
+            result_item, item_success, full_success = future.result()
 
-                # 对正样本打分
-                pos_with_scores = []
-                pos_success = True
-                if pos_docs:
-                    raw_pos_scores, pos_success = client.rerank(
-                        query, pos_docs, instruction,
-                        initial_batch_size=initial_batch_size
-                    )
-                    pos_scores = [(score + 1) / 2
-                                 for score in raw_pos_scores]
-
-                    if len(pos_scores) == len(pos_docs):
-                        pos_with_scores = [
-                            {'content': doc, 'score': score}
-                            for doc, score in zip(pos_docs, pos_scores)
-                        ]
-                    else:
-                        logging.warning(f"正样本分数数量({len(pos_scores)})与文档数量({len(pos_docs)})不一致")
-                        pos_success = False
-
-
-                # 对负样本打分
-                neg_with_scores = []
-                neg_success = True
-                if neg_docs:
-                    raw_neg_scores, neg_success = client.rerank(
-                        query, neg_docs, instruction,
-                        initial_batch_size=initial_batch_size
-                    )
-                    neg_scores = [score / 2
-                                 for score in raw_neg_scores]
-
-                    if len(neg_scores) == len(neg_docs):
-                        neg_with_scores = [
-                            {'content': doc, 'score': score}
-                            for doc, score in zip(neg_docs, neg_scores)
-                        ]
-                    else:
-                        logging.warning(f"负样本分数数量({len(neg_scores)})与文档数量({len(neg_docs)})不一致")
-                        neg_success = False
-
-                # 构建结果对象
-                result_item = {
-                    'query': query,
-                    'pos': pos_with_scores,
-                    'neg': neg_with_scores
-                }
-
-                # 保留原始数据中的其他字段
-                for key, value in item.items():
-                    if key not in result_item:
-                        result_item[key] = value
-
-                # 处理一行就立即写入一行
+            if item_success and result_item:
+                # 写入处理结果
                 json.dump(result_item, out_f, ensure_ascii=False)
                 out_f.write('\n')
                 out_f.flush()
-
                 processed_count += 1
 
-                # 检查是否有部分失败
-                if not (pos_success and neg_success):
+                if not full_success:
                     partial_failed_count += 1
-
-            except Exception as e:
-                logging.error(f"处理条目时出错: {str(e)}", exc_info=True)
+            else:
                 failed_count += 1
-                continue
 
     logging.info(f"处理完成，共处理{total_items}条数据")
     logging.info(f"成功{processed_count}条，完全失败{failed_count}条，部分失败{partial_failed_count}条")
@@ -237,22 +257,24 @@ def process_jsonl_line_by_line(input_file: str, output_file: str, base_url: str,
 
 
 def main():
-    parser = argparse.ArgumentParser(description='逐行处理JSONL文件，对query和正负样本进行打分，支持失败重试')
+    parser = argparse.ArgumentParser(description='并发处理JSONL文件，对query和正负样本进行打分，支持失败重试')
     parser.add_argument('--input', required=True, help='输入JSONL文件路径')
     parser.add_argument('--output', required=True, help='输出JSONL文件路径')
     parser.add_argument('--url', default='http://localhost:8080', help='Rerank服务端地址，默认为http://localhost:8080')
     parser.add_argument('--instruction', help='可选的指令字符串')
     parser.add_argument('--batch-size', type=int, default=32, help='初始批次大小，默认为32')
     parser.add_argument('--min-batch-size', type=int, default=1, help='最小批次大小，默认为1')
+    parser.add_argument('--max-workers', type=int, default=15, help='并发工作线程数，默认为15')
 
     args = parser.parse_args()
 
-    process_jsonl_line_by_line(
+    process_jsonl_concurrent(
         input_file=args.input,
         output_file=args.output,
         base_url=args.url,
         instruction=args.instruction,
-        initial_batch_size=args.batch_size
+        initial_batch_size=args.batch_size,
+        max_workers=args.max_workers
     )
 
 

@@ -14,7 +14,7 @@ swift sft \
     --loss_type generative_reranker \
     --train_type full \
     --dataset /data/db/data/hisense-reranking \
-    --split_dataset_ratio 0.1 \
+    --val_dataset /data/db/data/hisense-reranking-badcase /data/db/data/hisense-reranking-online \
     --eval_strategy steps \
     --eval_steps 10 \
     --num_train_epochs 100 \
