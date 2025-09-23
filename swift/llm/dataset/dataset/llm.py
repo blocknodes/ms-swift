@@ -411,9 +411,26 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='MTEB/hisense-reranking',
         hf_dataset_id='mteb/hisense-reranking',
-        split=['train','validation'],
+        split=['train'],
         preprocess_func=MTEBRerankPreprocessor(),
         tags=['rerank', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/hisense-reranking-badcase',
+        hf_dataset_id='mteb/hisense-reranking-badcase',
+        split=['validation'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/hisense-reranking-online',
+        hf_dataset_id='mteb/hisense-reranking-online',
+        split=['validation'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
+
 
 register_dataset(
     DatasetMeta(
