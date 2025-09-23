@@ -15,12 +15,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def load_processor_function(processor_path: str) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+def load_processor_function(processor_path: str) -> Callable[[Dict[str, Any]], Dict[str, Any] | List[Dict[str, Any]]]:
     """
     从指定文件动态加载processor函数
 
     :param processor_path: 处理器函数路径，格式为"文件路径:函数名"
-    :return: 加载的处理器函数
+    :return: 加载的处理器函数，可返回单个字典或字典列表
     """
     try:
         # 分割文件路径和函数名
@@ -56,19 +56,19 @@ class OrderedJSONLProcessor:
     """保持输入输出顺序和行数一致的JSONL处理器"""
 
     def __init__(self,
-                 process_func: Callable[[Dict[str, Any]], Dict[str, Any]],
+                 process_func: Callable[[Dict[str, Any]], Dict[str, Any] | List[Dict[str, Any]]],
                  error_handler: Optional[Callable[[Dict[str, Any], Exception], Dict[str, Any]]] = None):
         """
         初始化处理器
 
-        :param process_func: 处理单行JSON的函数
+        :param process_func: 处理单行JSON的函数，可返回单个字典或字典列表
         :param error_handler: 错误处理函数，必须返回一个值以保持行数
         """
         self.process_func = process_func
         # 确保错误处理函数返回值，维持行数
         self.error_handler = error_handler or self._default_error_handler
         self.write_lock = Lock()  # 保证写入线程安全
-        self.results: Dict[int, Optional[str]] = {}  # 存储处理结果，按索引排序
+        self.results: Dict[int, Optional[List[str]]] = {}  # 存储处理结果，按索引排序，每个结果可能包含多行
         self.next_write_index = 0  # 下一个要写入的索引
 
     @staticmethod
@@ -81,22 +81,40 @@ class OrderedJSONLProcessor:
         """处理带索引的行，并在合适时机写入结果"""
         try:
             if not line.strip():  # 处理空行
-                result = ""
+                result_lines = [""]
             else:
                 data = json.loads(line.strip())
                 processed = self.process_func(data)
-                result = json.dumps(processed, ensure_ascii=False) if processed is not None else ""
+
+                # 根据处理结果的类型生成不同的输出行
+                if isinstance(processed, list):
+                    # 对于字典列表，每个元素生成一行
+                    result_lines = [
+                        json.dumps(item, ensure_ascii=False)
+                        for item in processed
+                        if isinstance(item, dict)
+                    ]
+                    # 过滤空列表情况
+                    if not result_lines:
+                        result_lines = [""]
+                elif isinstance(processed, dict):
+                    # 对于单个字典，生成一行
+                    result_lines = [json.dumps(processed, ensure_ascii=False)]
+                else:
+                    # 对于其他类型，视为无效并记录警告
+                    logger.warning(f"处理器返回无效类型 {type(processed)}，行号: {index+1}")
+                    result_lines = [""]
         except json.JSONDecodeError as e:
             logger.error(f"JSON解析错误: {str(e)}, 行号: {index+1}")
-            result = json.dumps({"_parse_error": str(e), "_original_line": line.strip()})
+            result_lines = [json.dumps({"_parse_error": str(e), "_original_line": line.strip()})]
         except Exception as e:
             # 调用错误处理器并确保返回值
             error_result = self.error_handler(data, e)
-            result = json.dumps(error_result, ensure_ascii=False)
+            result_lines = [json.dumps(error_result, ensure_ascii=False)]
 
         # 保存结果
         with self.write_lock:
-            self.results[index] = result
+            self.results[index] = result_lines
             progress_bar.update(1)
 
             # 检查是否可以写入连续的结果
@@ -105,8 +123,11 @@ class OrderedJSONLProcessor:
     def _write_available_results(self, output_stream) -> None:
         """写入所有连续可用的结果"""
         while self.next_write_index in self.results:
-            result = self.results[self.next_write_index]
-            output_stream.write(f"{result}\n" if result is not None else "\n")
+            result_lines = self.results[self.next_write_index]
+            if result_lines:
+                # 写入当前索引对应的所有行
+                for line in result_lines:
+                    output_stream.write(f"{line}\n")
             # 移除已写入的结果以节省内存
             del self.results[self.next_write_index]
             self.next_write_index += 1
@@ -179,18 +200,24 @@ class OrderedJSONLProcessor:
 
         # 关闭进度条
         progress_bar.close()
-        logger.info(f"处理完成，总处理行数: {self.next_write_index}")
+        logger.info(f"处理完成，总处理输入行数: {self.next_write_index}")
 
 # 示例处理函数 - 当不指定外部处理器时使用
-def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
-    """示例：转换键为小写，保留原始顺序"""
-    return {k.lower(): v for k, v in data.items()}
+def example_processor(data: Dict[str, Any]) -> Dict[str, Any] | List[Dict[str, Any]]:
+    """示例：转换键为小写，演示既可以返回单个字典也可以返回字典列表"""
+    lower_data = {k.lower(): v for k, v in data.items()}
+
+    # 演示：如果有"items"键且值为列表，则返回多个结果
+    if "items" in lower_data and isinstance(lower_data["items"], list):
+        return [{"original_id": lower_data.get("id"), "item": item} for item in lower_data["items"]]
+
+    return lower_data
 
 # 命令行使用
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='保持顺序的JSONL处理工具')
+    parser = argparse.ArgumentParser(description='保持顺序的JSONL处理工具，支持返回列表生成多行')
     parser.add_argument('--input', type=str, help='输入JSONL文件路径，默认stdin')
     parser.add_argument('--output', type=str, help='输出JSONL文件路径，默认stdout')
     parser.add_argument('--workers', type=int, default=4, help='并发工作数')
