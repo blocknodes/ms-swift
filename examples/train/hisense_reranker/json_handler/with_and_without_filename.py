@@ -1,29 +1,21 @@
 from typing import Callable, Dict, Any, Optional, List, Tuple
 
 
-
 # 示例处理函数 - 当不指定外部处理器时使用
 def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     """示例：转换键为小写，保留原始顺序，同时处理pos和neg列表"""
-    prefix = '<qa>'
-    suffix = '</qa>'
     # 处理pos列表
     if 'pos' in data:
         processed_pos = []
         for item in data['pos']:
+            #import pdb;pdb.set_trace()
 
+            # 将分割后的结果添加到新列表
             processed_pos.append({
-
-                'content': item
+                'content': item['content']
             })
             processed_pos.append({
-
-                'content': prefix + item + suffix
-            })
-        for item in data['neg']:
-            processed_pos.append({
-
-                'content': item
+                'content': '\n'.join([item['filename'], item['content']])
             })
         # 将处理后的pos添加到结果字典
         data['pos'] = processed_pos
@@ -32,11 +24,14 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     if 'neg' in data:
         processed_neg = []
         for item in data['neg']:
-
             processed_neg.append({
-
-                'content': prefix + item + suffix
+                'content': item['content']
             })
+            processed_neg.append({
+                'content': '\n'.join([item['filename'], item['content']])
+            })
+        # 将处理后
+
         # 将处理后的neg添加到结果字典
         data['neg'] = processed_neg
 

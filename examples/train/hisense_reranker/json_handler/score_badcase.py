@@ -117,7 +117,7 @@ class RerankClient:
 
         return all_scores, success
 
-    def do_rerank(self, query: str, documents: List[str], instruction: Optional[str] = None) -> List[Dict]:
+    def rerank_and_sort(self, query: str, documents: List[str], instruction: Optional[str] = None) -> List[Dict]:
         """发送排序请求并返回按分数排序的文档列表"""
         scores, success = self.rerank(query, documents, instruction)
 
@@ -132,47 +132,49 @@ class RerankClient:
             {"content": doc, "score": score}
             for doc, score in zip(documents, scores)
         ]
-        #import random
-        #random.shuffle(ranked_docs)
 
-        #ranked_docs.sort(key=lambda x: x["score"] if not float('nan') else -float('inf'), reverse=False)
+        ranked_docs.sort(key=lambda x: x["score"] if not float('nan') else -float('inf'), reverse=True)
         return ranked_docs
 
 
 
-# 示例处理函数 - 当不指定外部处理器时使用
 def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
-    """示例：为 pos 和 neg 列表增加 score 字段，保留原始顺序和结构"""
+    """
+    示例：使用 RerankClient 分别排序 doc 和 qna，合并后再取 top3
+    """
     client = RerankClient()
-    concat_filename = False
-    if os.environ.get('ADD_FILENAMW'):
-        concat_filename = True
+    merged = []
 
-    # 处理 pos 列表
-    if isinstance(data.get('pos'), list):
+    # 处理 doc 列表
+    docs = data.get('doc', [])
+    if docs:
+        contents = [d['content'] for d in docs]
+        reranked = client.rerank_and_sort(data['query'], contents)
+        score_map = {item['content']: item['score'] for item in reranked}
 
-        #import pdb;pdb.set_trace()
-        pos_contents = [item.get('content', '') for item in data['pos']]
-        if concat_filename:
-            pos_contents = [item['filename']+'\n' + item['content'] for item in data['pos']]
-        results = client.do_rerank(data.get('query', ''), pos_contents)
+        for d in docs:
+            d['score'] = score_map.get(d['content'], 0.0)
+            d['type'] = 'doc'  # 标记类型
+        merged.extend(docs)
 
-        # 用结果中的 score 更新原始数据
-        for item, result in zip(data['pos'], results):
-            #assert item['content'] == result['content']
-            item['score'] = result.get('score')  # 只增加 score 字段
+    # 处理 qna 列表
+    prefix = '<qa>'
+    suffix = '</qa>'
+    qnas = data.get('qna', [])
+    if qnas:
+        titles = [prefix + q['qna_title'] + suffix for q in qnas]
+        reranked = client.rerank_and_sort(data['query'], titles)
+        score_map = {item['content'][len(prefix):-len(suffix)]: item['score'] for item in reranked}
 
-    # 处理 neg 列表
-    if isinstance(data.get('neg'), list):
-        neg_contents = [item.get('content', '') for item in data['neg']]
-        if concat_filename:
-            neg_contents = [item['filename']+'\n' + item['content'] for item in data['neg']]
-        results = client.do_rerank(data.get('query', ''), neg_contents)
+        for q in qnas:
+            q['score'] = score_map.get(q['qna_title'], 0.0)
+            q['type'] = 'qna'  # 标记类型
+        merged.extend(qnas)
 
-        # 用结果中的 score 更新原始数据
-        for item, result in zip(data['neg'], results):
-            #assert item['content'] == result['content']
-            #import pdb;pdb.set_trace()
-            item['score'] = result.get('score')  # 只增加 score 字段
+    # 合并后按 score 降序排序
+    merged.sort(key=lambda x: x['score'], reverse=True)
+
+    # 取 top3
+    data['top3'] = merged[:3]
 
     return data
