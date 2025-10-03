@@ -7,8 +7,8 @@ def hit(item):
     #    return True
     #return False
     if 'llm_relervance' not in item.keys():
-        return True
-    if item['llm_relervance'] == '1' and item['llm_filename_relervance'] != '0':
+        return False
+    if item['llm_relervance'] == '1':# and item['llm_filename_relervance'] != '0':
         return True
     return False
 
@@ -34,7 +34,7 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     data['hit1'] = hit1
     data['hit3'] = hit3
 
-    ranked_docs = [x for x in ranked_docs if ('llm_filename_relervance' not in x.keys() or x['llm_filename_relervance'] != '0')]
+    #ranked_docs = [x for x in ranked_docs if ('llm_filename_relervance' not in x.keys() or x['llm_filename_relervance'] != '0')]
     hit1=1 if hit(ranked_docs[0]) else 0
 
     hit3 =0

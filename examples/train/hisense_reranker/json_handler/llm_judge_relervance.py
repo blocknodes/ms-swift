@@ -136,13 +136,18 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     # 创建客户端
     client = SimpleLLMClient(llm_configs=LLM_CONFIGS, default_llm="deepseek-v3")
     query = data['query']
-    pos_contents = [item['content'] for item in data['pos']]
-    pos_contents = '\n' + '\n'.join(pos_contents) + '\n'
+    pos_contents = None
+    if 'pos' in data.keys() and len(data['pos']) > 0:
+        pos_contents = [item['content'] for item in data['pos']]
+        pos_contents = '\n' + '\n'.join(pos_contents) + '\n'
 
 
     for neg in data['neg']:
-
-        prompt = f'''请根据判断以下的片段是否能回答指定的问题：{query}，
+        prompt = f'''请判断能否根据以下的片段回答指定的问题：{query}，
+需要判断的片段：{neg['content']}
+输出两行，第一行是1或者0，表示是否相关，第二行输出reason，不要带任何格式和标题'''
+        if pos_contents:
+            prompt = f'''请根据判断以下的片段是否能回答指定的问题：{query}，
 可以参考的能回答的例子如下：{pos_contents}，需要判断的片段：{neg['content']}
 输出两行，第一行是1或者0，表示是否相关，第二行输出reason，不要带任何格式和标题'''
 

@@ -94,12 +94,15 @@ class OrderedJSONLProcessor:
                         for item in processed
                         if isinstance(item, dict)
                     ]
-                    # 过滤空列表情况
+                    # 过滤空列表情况 - 修改为不写入任何行
                     if not result_lines:
-                        result_lines = [""]
+                        result_lines = None
                 elif isinstance(processed, dict):
                     # 对于单个字典，生成一行
                     result_lines = [json.dumps(processed, ensure_ascii=False)]
+                elif processed is None:
+                    # 返回None时不写入任何行
+                    result_lines = None
                 else:
                     # 对于其他类型，视为无效并记录警告
                     logger.warning(f"处理器返回无效类型 {type(processed)}，行号: {index+1}")

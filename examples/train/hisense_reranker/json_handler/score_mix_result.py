@@ -154,31 +154,38 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
         concat_filename = True
 
     # 处理 pos 列表
-    if isinstance(data.get('pos'), list):
+    if isinstance(data.get('segmentAfterRerankResult'), list):
 
         #import pdb;pdb.set_trace()
-        pos_contents = [item.get('content', '') for item in data['pos']]
+        pos_contents = [item.get('content', '') for item in data['segmentAfterRerankResult']]
         if concat_filename:
             pos_contents = ['<filename>' + filename_clean(item['filename_clean']) + '</filename>' + item['content'] for item in data['pos']
              if item['filename'] != '']
         results = client.do_rerank(data.get('query', ''), pos_contents)
 
         # 用结果中的 score 更新原始数据
-        for item, result in zip(data['pos'], results):
+        for item, result in zip(data['segmentAfterRerankResult'], results):
             #assert item['content'] == result['content']
             item['score'] = result.get('score')  # 只增加 score 字段
+            #item['score'] = 1
+        data['segmentAfterRerankResult'].sort(key=lambda x: x["score"], reverse=True)
+
 
     # 处理 neg 列表
-    if isinstance(data.get('neg'), list):
-        neg_contents = [item.get('content', '') for item in data['neg']]
+    #import pdb;pdb.set_trace()
+    if isinstance(data.get('qnaAfterReRankResult '), list):
+        neg_contents = [item.get('title', '') for item in data['qnaAfterReRankResult ']]
         if concat_filename:
-            neg_contents = [item['filename']+'\n' + item['content'] for item in data['neg']]
+            neg_contents = [item['filename']+'\n' + item['content'] for item in data['qnaAfterReRankResult ']]
         results = client.do_rerank(data.get('query', ''), neg_contents)
 
         # 用结果中的 score 更新原始数据
-        for item, result in zip(data['neg'], results):
+        for item, result in zip(data['qnaAfterReRankResult '], results):
             #assert item['content'] == result['content']
             #import pdb;pdb.set_trace()
             item['score'] = result.get('score')  # 只增加 score 字段
+        data['qnaAfterReRankResult '].sort(key=lambda x: x["score"], reverse=True)
+        data['qnaAfterReRankResult'] = data['qnaAfterReRankResult ']
+        del data['qnaAfterReRankResult ']
 
     return data

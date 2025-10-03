@@ -528,7 +528,11 @@ def generative_reranker_loss(outputs,
     expanded_labels[ :,1] = binary_labels
 
     # 4. 使用KL散度损失
-    #import pdb;pdb.set_trace()
+    #if torch.distributed.get_rank() == 0:
+    #    import pdb;pdb.set_trace()
+    #else:
+    #    import time
+    #    time.sleep(2000)
 
     #print(f'### probabilities:{probabilities}#####')
     #print(f'### expanded_labels:{expanded_labels}#####')

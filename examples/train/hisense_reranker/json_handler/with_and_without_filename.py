@@ -15,7 +15,7 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
                 'content': item['content']
             })
             processed_pos.append({
-                'content': '\n'.join([item['filename'], item['content']])
+                'content': '<key>' +item['filename'] + '</key>'+item['content']
             })
         # 将处理后的pos添加到结果字典
         data['pos'] = processed_pos
@@ -24,13 +24,14 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     if 'neg' in data:
         processed_neg = []
         for item in data['neg']:
-            processed_neg.append({
-                'content': item['content']
-            })
-            processed_neg.append({
-                'content': '\n'.join([item['filename'], item['content']])
-            })
-        # 将处理后
+            if 'filename' in item:
+                processed_neg.append({
+                    'content': '<key>' +item['filename'] + '</key>'+item['content']
+                })
+            else:
+                processed_neg.append({
+                    'content': item['content']
+                })
 
         # 将处理后的neg添加到结果字典
         data['neg'] = processed_neg

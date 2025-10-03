@@ -6,7 +6,7 @@ export PYTHONPATH=../../../:$PYTHONPATH
 export CUDA_VISIBLE_DEVICES=0,1
 export NPROC_PER_NODE=$nproc_per_node
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-output_dir=v4_filename_faq
+output_dir=v5_bge_filename
 
 # 运行训练命令
 swift sft \
