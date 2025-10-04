@@ -23,34 +23,34 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
 
     result = []
     all_content=set()
-    for query_pair in querys:
-        all_content.add(query_pair.split('/n')[1])
+    #for query_pair in querys:
+    #    all_content.add(query_pair.split('/n')[1])
 
     for i in range(len(querys)):
         query_pair = querys[i]
         sample = {}
         #sample['query'] = 'TCL微波炉'+generate_with_model(models[0], query_pair)
-        sample['query'] = generate_with_model(models[0], query_pair).split('/n')[0]
-        content = generate_with_model(models[0], query_pair).split('/n')[1]
+        sample['query'] = generate_with_model(models[0], query_pair)
+        #content = generate_with_model(models[0], query_pair).split('/n')[1]
         ## pos
         sample['pos'] = []
         sample['neg'] = []
         for file in files:
             pos_file = generate_with_model(models[0], file)
-            if query_pair.split('\n')[0] != 0:
-                    pos_file = query_pair.split('\n')[0] + models[0] + file.split('\n')[1]
-            sample['pos'].append({'content':content, 'filename':pos_file})
-            #sample['pos'].append({'content':content, 'filename':''})
+            if len(query_pair.split('\n')[0]) > 0:
+                #import pdb;pdb.set_trace()
+                pos_file = query_pair.split('\n')[0] + models[0] + file.split('\n')[1]
+            sample['pos'].append({'content':pos_file})
+            sample['pos'].append({'content':file.replace('\n','')})
+
+
             for model in models[1:]:
                 model = replace_with_random_letter(models[0])
 
                 neg_file = generate_with_model(model, file)
                 if query_pair.split('\n')[0] != 0:
                     neg_file = query_pair.split('\n')[0] + model + file.split('\n')[1]
-                sample['neg'].append({'content':content, 'filename': neg_file})
-            for neg_content in all_content:
-                if neg_content != content:
-                    sample['neg'].append({'content':neg_content})
+                sample['neg'].append({'content':neg_file})
         result.append(sample)
 
     return result

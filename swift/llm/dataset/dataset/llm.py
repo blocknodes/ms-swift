@@ -390,7 +390,7 @@ class MTEBRerankPreprocessor(ResponsePreprocessor):
         if isinstance(positives[0], dict) and 'content' in positives[0].keys():
 
             positives = [f"{s['content']}<1>"for s in positives]
-            negatives = [f"{s['content']}<{s['score']/2}>"for s in negatives]
+            negatives = [f"{s['content']}<0>"for s in negatives]
             #print(positives[0])
 
         ### we don't need \n in the end of pos or neg!!!

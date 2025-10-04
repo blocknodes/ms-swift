@@ -27,7 +27,7 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'key': model,
         'query_prefix': query_list[0],
-        'query_suffix': query_list[1]+'/n'+data['content'],
+        'query_suffix': query_list[1],#+'/n'+data['content'],
         'file_prefix': file_list[0],
         'file_suffix': file_list[1]
     }
