@@ -91,11 +91,11 @@ products = products_string.split(' ')
 
 result = []
 #### 品类严格匹配
-products_string='电视机 空调 中央空调 冰箱 洗衣机 微波炉 电饭煲 吸尘器 电吹风 牙刷 电动牙刷 音响系统 燃气灶'
+products_string='电视机 空调 中央空调 海信冰箱 冰箱 洗衣机 微波炉 电饭煲 吸尘器 电吹风 牙刷 电动牙刷 音响系统 燃气灶'
 
 products = products_string.split(' ')
 
-query_templates =['{}{}','请问下，这款{}型号的{}','您好，{}{}','介绍下这款{}{}']
+query_templates =['{}{}','请问下这款{}型号的{}','您好{}{}','介绍下这款{}{}']
 
 #### Model only #######
 for i in range(10000):
@@ -114,14 +114,18 @@ for i in range(10000):
     negs = []
     ## same product different model(one char)
     for j in range(7):
-        negs.append({'content':product+generate_one_different(pos)})
+
+        #negs.append({'content':product+generate_one_different(pos)+random.choice(list(file_suffix))})
+        negs.append({'content':generate_one_different(pos)})
     ## same product different model
     for j in range(7):
-        negs.append({'content':product+generate_random_string((i+j*13)%10,pos)})
+        #negs.append({'content':product+generate_random_string((i+j*13)%10,pos)+random.choice(list(file_suffix))})
+        negs.append({'content':generate_random_string((i+j*13)%10,pos)})
     ## different product same model
-    for j in range(7):
-        negs.append({'content':product_reject[j%len(product_reject)]+pos})
-    data['pos'] = [{'content':product+pos}]
+    #for j in range(7):
+    #    negs.append({'content':product_reject[j%len(product_reject)]+pos+random.choice(list(file_suffix))})
+    #data['pos'] = [{'content':product+pos+random.choice(list(file_suffix))}]
+    data['pos'] = [{'content':pos}]
     data['neg'] = negs
     result.append(data)
 
