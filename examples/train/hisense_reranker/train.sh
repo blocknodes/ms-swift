@@ -3,12 +3,11 @@
 # 设置环境变量
 export PYTHONPATH=../../../:$PYTHONPATH
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-#export CUDA_VISIBLE_DEVICES=1
-output_dir=v3filename_pos_neg
+export CUDA_VISIBLE_DEVICES=0
+output_dir=v12_qna_lora
 
 # 运行训练命令
-/usr/bin/python -m torch.distributed.run --nproc_per_node 1 \
-    /juice/prd_ai_center/train_project/dingbo4/workspace/ms-swift/swift/cli/sft.py \
+python /juice/workspace/ms-swift/swift/cli/sft.py \
     --model ../../../../../models/Qwen3-Reranker-0.6B/ \
     --task_type generative_reranker \
     --loss_type generative_reranker \
@@ -18,6 +17,8 @@ output_dir=v3filename_pos_neg
     --eval_strategy steps \
     --eval_steps 50 \
     --num_train_epochs 20 \
+    --lora_rank 8 \
+    --lora_alpha 32 \
     --lr-scheduler-type constant \
     --save_steps 50 \
     --per_device_train_batch_size 8 \

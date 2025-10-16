@@ -386,11 +386,14 @@ class MTEBRerankPreprocessor(ResponsePreprocessor):
         query = row['query']
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
+        #print(len(positives))
+        if len(positives) == 0:
+            print(f'################')
 
         if isinstance(positives[0], dict) and 'content' in positives[0].keys():
 
-            positives = [f"{s['content']}<1>"for s in positives]
-            negatives = [f"{s['content']}<0>"for s in negatives]
+            positives = [f"{s['content']}<{s['score']}>"for s in positives]
+            negatives = [f"{s['content']}<{s['score']}>"for s in negatives]
             #print(positives[0])
 
         ### we don't need \n in the end of pos or neg!!!

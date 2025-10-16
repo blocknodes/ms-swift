@@ -6,7 +6,7 @@ export PYTHONPATH=../../../:$PYTHONPATH
 export CUDA_VISIBLE_DEVICES=0,1
 export NPROC_PER_NODE=$nproc_per_node
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-output_dir=v5_bge_filename
+output_dir=v18_qd_with_filename
 
 # 运行训练命令
 swift sft \
@@ -19,7 +19,7 @@ swift sft \
     --lr-scheduler-type constant \
     --eval_strategy steps \
     --eval_steps 50 \
-    --num_train_epochs 10 \
+    --num_train_epochs 3 \
     --save_steps 50 \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \

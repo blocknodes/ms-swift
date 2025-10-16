@@ -491,6 +491,7 @@ def generative_reranker_loss(outputs,
     # Default to "yes"/"no", but can be configured via environment variables
     positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
     negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+    #import pdb;pdb.set_trace()
 
     try:
         positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
@@ -672,6 +673,8 @@ def listwise_generative_reranker_loss(outputs,
     logits = outputs.logits
     tokenizer = trainer.processing_class
     labels = labels.float()
+    labels = labels / 1000
+
 
     # Configuration from environment variables
     positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')

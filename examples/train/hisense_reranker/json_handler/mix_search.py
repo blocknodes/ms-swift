@@ -78,7 +78,7 @@ class KbpRetrievalClient:
 
 
 def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
-    sleep(1)
+    sleep(20)
     query = data['query']
     client = KbpRetrievalClient()
     result = client.retrieval(
@@ -93,14 +93,16 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     data['segmentBeforeRerankResult'] = [{'filename':item['fileName'], 'content':item['segmentContent'], 'score':item['score']} for item in result['records']['docRunResult']['segmentBeforeRerankResult']]
     data['segmentAfterRerankResult'] = [{'filename':item['fileName'], 'content':item['segmentContent'], 'score':item['score']} for item in result['records']['docRunResult']['segmentAfterRerankResult']]
     #import pdb;pdb.set_trace()
-    data['qnaBeforeReRankResult'] = [{'title':item['title'], 'content':item['content'], 'score':item['score']} for item in result['records']['qnaRunResult']["qnaBeforeRerankResult"]]
-    data['qnaAfterReRankResult'] = [{'title':item['title'], 'content':item['content'], 'score':item['score']} for item in result['records']['qnaRunResult']["qnaAfterRerankResult"]]
+    data['qnaBeforeReRankResult'] = [{'filename':item['fileName'], 'title':item['title'], 'content':item['content'], 'score':item['score']} for item in result['records']['qnaRunResult']["qnaBeforeRerankResult"]]
+
+    data['qnaAfterReRankResult'] = [{'filename':item['fileName'], 'title':item['title'], 'content':item['content'], 'score':item['score']} for item in result['records']['qnaRunResult']["qnaAfterRerankResult"]]
     return data
 # 使用示例
 if __name__ == "__main__":
     # 初始化客户端
-    client = KbpRetrievalClient()
-    query="海信人工客服电话是多少"
+    client = KbpRetrievalClient(user_key='qimfvt7lwtqeyangfl259vjg8fzdhh5l',api_key ='85f89cfd-b1be-4610-b9f1-98aff69674c9')
+    query="海信微波炉的快速解冻功能怎么操作"
+    query="冰箱的里程费怎么收？"
     # 执行检索
     result = client.retrieval(
         query=query,
