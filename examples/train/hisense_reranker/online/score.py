@@ -178,7 +178,7 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
             if item['filename'] == 'QNA':
                 contents.append(item['content'].split('\n')[0])
             else:
-                contents.append(item['content'])
+                contents.append(f"{item['filename']}\n{item['content']}")
         results = client.do_rerank(data.get('query', ''), contents)
 
         # 用结果中的 score 更新原始数据

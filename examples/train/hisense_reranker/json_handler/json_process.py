@@ -24,7 +24,11 @@ def load_processor_function(processor_path: str) -> Callable[[Dict[str, Any]], D
     """
     try:
         # 分割文件路径和函数名
-        file_path, func_name = processor_path.split(':', 1)
+        if ':' not in processor_path:
+            file_path = processor_path
+            func_name = 'example_processor'
+        else:
+            file_path, func_name = processor_path.split(':', 1)
         file_path = file_path.strip()
         func_name = func_name.strip()
 

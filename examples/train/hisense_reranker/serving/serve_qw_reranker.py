@@ -44,14 +44,14 @@ def load_model():
     # 加载分词器和模型
     logging.info(f"Loading model from {MODEL_PATH}")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, padding_side='left')
-    base_model = AutoModelForCausalLM.from_pretrained(MODEL_PATH).eval()
-    adapter_path = sys.argv[3]
-    model = PeftModel.from_pretrained(base_model, adapter_path, adapter_name="adapter1")
+    model = AutoModelForCausalLM.from_pretrained(MODEL_PATH).eval()
+    #adapter_path = sys.argv[3]
+    #model = PeftModel.from_pretrained(base_model, adapter_path, adapter_name="adapter1")
 
 
-    adapter_path = sys.argv[4]
-    model.load_adapter(adapter_path, adapter_name="adapter2")
-    model.set_adapter("adapter1")
+    #adapter_path = sys.argv[4]
+    #model.load_adapter(adapter_path, adapter_name="adapter2")
+    #model.set_adapter("adapter1")
 
     # 移动模型到GPU（如果可用）
     if torch.cuda.is_available():
