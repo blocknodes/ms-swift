@@ -1,8 +1,8 @@
 import torch
 from transformers import AutoTokenizer, Qwen3ForCausalLM, Qwen3ForSequenceClassification
-
-# Define the model name (a smaller version is fine for this demo)
-model_name = "Qwen/Qwen3-Reranker-0.6B"
+import sys
+# 定义模型名称
+model_name = sys.argv[1]
 
 # --- Step 1: Load the Causal LM and extract lm_head weights ---
 print(f"1. Loading Causal LM: {model_name}")
@@ -43,7 +43,7 @@ print("\n5. Replacing the randomly initialized classifier weights")
 # The classification head in Qwen is named 'score'. It's a torch.nn.Linear layer.
 # Its weight matrix has shape (num_labels, hidden_size), which is (1, hidden_size) here.
 with torch.no_grad():
-    # We need to add a dimension to our vector to match the (1, hidden_size) shape
+    # 添加维度以匹配(1, hidden_size)形状
     seq_cls_model.score.weight.copy_(classifier_vector.unsqueeze(0))
     # It's good practice to zero out the bias for a clean transfer
     if seq_cls_model.score.bias is not None:
@@ -51,28 +51,34 @@ with torch.no_grad():
 
 print("   Classifier head replaced successfully.")
 
+# --- 保存模型和tokenizer ---
+save_directory = "./qwen3_custom_classifier"
+print(f"\n6. 保存模型到 {save_directory}")
+seq_cls_model.save_pretrained(save_directory)
+tokenizer.save_pretrained(save_directory)
+print("   模型和tokenizer保存成功。")
 
 # --- Verification: Prove that the logic works ---
 print("\n--- VERIFICATION ---")
 text = "Is this a good example?"
 inputs = tokenizer(text, return_tensors="pt")
 
-# A. Get logits from the original Causal LM
+# A. 从原始因果LM获取logits
 with torch.no_grad():
-    outputs_causal = causal_lm(**inputs)
+    outputs_causal = causal_lm(** inputs)
     last_token_logits = outputs_causal.logits[0, -1, :]
     manual_logit_diff = last_token_logits[yes_token_id] - last_token_logits[no_token_id]
 
-    # Compute probs (yes/no) and extract 'yes' prob
+    # 计算概率并提取'yes'的概率
     concat_logits = torch.stack([last_token_logits[yes_token_id], last_token_logits[no_token_id]])
     causal_prob = torch.softmax(concat_logits, dim=-1)[0]
 
-# B. Get the single logit from our new Sequence Classification model
+# B. 从新的序列分类模型获取单个logit
 with torch.no_grad():
     outputs_seq_cls = seq_cls_model(**inputs)
-    model_logit = outputs_seq_cls.logits.squeeze() # Shape is (1, 1), squeeze to scalar
+    model_logit = outputs_seq_cls.logits.squeeze()  # 形状为(1, 1)，压缩为标量
 
-    # Compute 'yes' prob
+    # 计算'yes'的概率
     classification_prob = torch.sigmoid(model_logit)
 
 print(f"Input text: '{text}'")

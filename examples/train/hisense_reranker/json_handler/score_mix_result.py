@@ -153,39 +153,34 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     if os.environ.get('ADD_FILENAMW'):
         concat_filename = True
 
-    # 处理 pos 列表
-    if isinstance(data.get('segmentAfterRerankResult'), list):
+    top1s = []
+    remain_cadidates = []
+    for sub_query in data['recall']:
+        candidates = data['recall'][sub_query]
+        docs = []
+        for item in candidates:
+            #qd
+            if 'block_content' in item:
+                #import pdb;pdb.set_trace()
+                docs.append(f"{item['filename']}\n{item['seg_content']}")
+            else:
+                #import pdb;pdb.set_trace()
+                docs.append(f"{item['title']}")
 
+        results = client.do_rerank(sub_query, docs)
+        for i in range(len(candidates)):
+            #print(candidates[i]['score'])
+            #print(results[i]['score'])
+            candidates[i]['score'] = results[i]['score']
         #import pdb;pdb.set_trace()
-        pos_contents = [item.get('content', '') for item in data['segmentAfterRerankResult']]
-        if concat_filename:
-            pos_contents = ['<filename>' + filename_clean(item['filename_clean']) + '</filename>' + item['content'] for item in data['pos']
-             if item['filename'] != '']
-        results = client.do_rerank(data.get('query', ''), pos_contents)
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        top1s.append(candidates[0])
+        remain_cadidates=remain_cadidates + candidates[1:]
+    remain_cadidates.sort(key=lambda x: x["score"], reverse=True)
+    finals = top1s+remain_cadidates[:3-len(top1s)]
 
-        # 用结果中的 score 更新原始数据
-        for item, result in zip(data['segmentAfterRerankResult'], results):
-            #assert item['content'] == result['content']
-            item['score'] = result.get('score')  # 只增加 score 字段
-            #item['score'] = 1
-        data['segmentAfterRerankResult'].sort(key=lambda x: x["score"], reverse=True)
+    data['finalRecallResult'] =  finals
 
 
-    # 处理 neg 列表
-    #import pdb;pdb.set_trace()
-    if isinstance(data.get('qnaAfterReRankResult '), list):
-        neg_contents = [item.get('title', '') for item in data['qnaAfterReRankResult ']]
-        if concat_filename:
-            neg_contents = [item['filename']+'\n' + item['content'] for item in data['qnaAfterReRankResult ']]
-        results = client.do_rerank(data.get('query', ''), neg_contents)
-
-        # 用结果中的 score 更新原始数据
-        for item, result in zip(data['qnaAfterReRankResult '], results):
-            #assert item['content'] == result['content']
-            #import pdb;pdb.set_trace()
-            item['score'] = result.get('score')  # 只增加 score 字段
-        data['qnaAfterReRankResult '].sort(key=lambda x: x["score"], reverse=True)
-        data['qnaAfterReRankResult'] = data['qnaAfterReRankResult ']
-        del data['qnaAfterReRankResult ']
 
     return data

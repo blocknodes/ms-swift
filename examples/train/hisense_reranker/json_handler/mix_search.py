@@ -10,9 +10,9 @@ class KbpRetrievalClient:
     封装 KBP 混合检索 API 的客户端类
     """
 
-    def __init__(self, base_url="https://inner-apisix.hisense.com",
-                 user_key="l1hmt1c6byvphlybvalpbcq2hfid1epv",
-                 api_key="464fb879-2782-4436-8ac8-8552bd520de4"):
+    def __init__(self, base_url="https://inner-apisix-test.hisense.com",
+                 user_key="qimfvt7lwtqeyangfl259vjg8fzdhh5l",
+                 api_key="85f89cfd-b1be-4610-b9f1-98aff69674c9"):
         """
         初始化客户端
 
@@ -44,13 +44,14 @@ class KbpRetrievalClient:
         :param backoff_factor: 退避因子
         :return: API 响应结果（字典）
         """
-        url = f"{self.base_url}/kbp/openapi/kbp/mix/retrieval?user_key={self.user_key}"
+        url = f"{self.base_url}/kbp-test/openapi/kbp/mix/retrieval?user_key={self.user_key}"
 
         payload = {
             "retrieval_setting": {
                 "top_k": top_k,
                 "score_threshold": score_threshold,
-                "search_mode": search_mode
+                "search_mode": search_mode,
+                "search_strategy":"precise",
             },
             "query": query,
             "tracingModel": tracing_model
@@ -78,7 +79,7 @@ class KbpRetrievalClient:
 
 
 def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
-    sleep(20)
+    #sleep(20)
     query = data['query']
     client = KbpRetrievalClient()
     result = client.retrieval(
@@ -89,27 +90,52 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
         tracing_model=True
     )
     #import pdb;pdb.set_trace()
+    new_data={}
+    new_data['query'] = data['query']
+    new_data['recall'] = {}
+    for sub_query in result['records']['splitQueryList']:
+        new_data['recall'][sub_query] = []
+        segments = result['records']['docRunResult']['segmentAfterRerankResult'][sub_query]
+        for segment in segments:
+            item = {'filename':segment['fileName'], 'seg_content':segment['segmentContent'], 'score':segment['score']}
+            blockid = segment['blockId']
+            has_block=False
+            for block in result['records']['docRunResult']['blockExtractedResult'][sub_query]:
+                if block['blockId'] == blockid:
+                    item['block_content'] = block['content']
+                    has_block = True
+                    break
+            if not has_block:
+                pass
+                #import pdb;pdb.set_trace()
+            if has_block:
+                new_data['recall'][sub_query].append(item)
+        for qnas in result['records']['qnaRunResult']['qnaExtractedResult'][sub_query]:
+            item = {'filename':qnas['fileName'], 'title':qnas['title'], 'content':qnas['content'], 'score':qnas['score']}
+            new_data['recall'][sub_query].append(item)
 
-    data['segmentBeforeRerankResult'] = [{'filename':item['fileName'], 'content':item['segmentContent'], 'score':item['score']} for item in result['records']['docRunResult']['segmentBeforeRerankResult']]
-    data['segmentAfterRerankResult'] = [{'filename':item['fileName'], 'content':item['segmentContent'], 'score':item['score']} for item in result['records']['docRunResult']['segmentAfterRerankResult']]
-    #import pdb;pdb.set_trace()
-    data['qnaBeforeReRankResult'] = [{'filename':item['fileName'], 'title':item['title'], 'content':item['content'], 'score':item['score']} for item in result['records']['qnaRunResult']["qnaBeforeRerankResult"]]
 
-    data['qnaAfterReRankResult'] = [{'filename':item['fileName'], 'title':item['title'], 'content':item['content'], 'score':item['score']} for item in result['records']['qnaRunResult']["qnaAfterRerankResult"]]
-    return data
+
+
+    new_data['finalRecallResult'] = result['records']['finalRecallResult']
+
+
+
+    return new_data
 # 使用示例
 if __name__ == "__main__":
     # 初始化客户端
-    client = KbpRetrievalClient(user_key='qimfvt7lwtqeyangfl259vjg8fzdhh5l',api_key ='85f89cfd-b1be-4610-b9f1-98aff69674c9')
-    query="海信微波炉的快速解冻功能怎么操作"
-    query="冰箱的里程费怎么收？"
+    client = KbpRetrievalClient()
+
+    query="电视画面开机自动调节亮度怎么关掉"
     # 执行检索
     result = client.retrieval(
         query=query,
-        top_k=10,
+        top_k=3,
         score_threshold=0,
         search_mode="hybrid",
-        tracing_model=True
+
+        tracing_model=False
     )
 
     print(f'query is {query}')
