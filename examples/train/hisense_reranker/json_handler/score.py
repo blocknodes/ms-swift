@@ -167,6 +167,7 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
         for item, result in zip(data['pos'], results):
             #assert item['content'] == result['content']
             item['score'] = result.get('score')  # 只增加 score 字段
+            #item['score'] = 1
 
     # 处理 neg 列表
     if isinstance(data.get('neg'), list):

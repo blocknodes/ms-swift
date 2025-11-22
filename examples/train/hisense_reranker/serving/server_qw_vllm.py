@@ -81,7 +81,7 @@ def compute_logits(messages):
             # 获取"yes"和"no"的log概率
             true_logit = final_logits[true_token].logprob if true_token in final_logits else -10.0
             false_logit = final_logits[false_token].logprob if false_token in final_logits else -10.0
-
+            print(f'true_logit: {true_logit} false_logit:{false_logit}')
             # 计算概率并归一化
             true_score = math.exp(true_logit)
             false_score = math.exp(false_logit)

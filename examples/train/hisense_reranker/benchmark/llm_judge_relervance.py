@@ -122,11 +122,11 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
             "url_params": {}
         },
         "gpt-4": {
-            "url": "https://inner-apisix.hisense.com/openai/deployments/gpt-4-1/chat/completions",
-            "headers": {"Content-Type": "application/json", "api-key": "Oi4rzFyLbMOmqVn8YYEyT2Pt0mkr3lgU"},
-            "key": "nregzh6g2oviajyjstgzlhjsjmp9rtql",
-            "model": "gpt-4-1",
-            "url_params": {"user_key": "{key}"}
+        "url": "https://inner-apisix.hisense.com/openai/deployments/gpt-4-1/chat/completions",
+        "headers": {"Content-Type": "application/json", "api-key": "S5foSexkp5fFbW6enK17gZlUplKyXcYE"},
+        "key": "toih26kjghlfzmmv6jys14xuzxua2eid",
+        "model": "gpt-4-1",
+        "url_params": {"user_key": "{key}"}
         }
     }
 

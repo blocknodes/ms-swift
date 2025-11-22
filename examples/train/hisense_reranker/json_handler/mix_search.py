@@ -12,7 +12,7 @@ class KbpRetrievalClient:
 
     def __init__(self, base_url="https://inner-apisix-test.hisense.com",
                  user_key="qimfvt7lwtqeyangfl259vjg8fzdhh5l",
-                 api_key="85f89cfd-b1be-4610-b9f1-98aff69674c9"):
+                 api_key="bb3ee9d4-ee46-4b84-9a65-16d1a185ef8e"):
         """
         初始化客户端
 
@@ -92,32 +92,14 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     #import pdb;pdb.set_trace()
     new_data={}
     new_data['query'] = data['query']
-    new_data['recall'] = {}
-    for sub_query in result['records']['splitQueryList']:
-        new_data['recall'][sub_query] = []
-        segments = result['records']['docRunResult']['segmentAfterRerankResult'][sub_query]
-        for segment in segments:
-            item = {'filename':segment['fileName'], 'seg_content':segment['segmentContent'], 'score':segment['score']}
-            blockid = segment['blockId']
-            has_block=False
-            for block in result['records']['docRunResult']['blockExtractedResult'][sub_query]:
-                if block['blockId'] == blockid:
-                    item['block_content'] = block['content']
-                    has_block = True
-                    break
-            if not has_block:
-                pass
-                #import pdb;pdb.set_trace()
-            if has_block:
-                new_data['recall'][sub_query].append(item)
-        for qnas in result['records']['qnaRunResult']['qnaExtractedResult'][sub_query]:
-            item = {'filename':qnas['fileName'], 'title':qnas['title'], 'content':qnas['content'], 'score':qnas['score']}
-            new_data['recall'][sub_query].append(item)
 
 
 
 
-    new_data['finalRecallResult'] = result['records']['finalRecallResult']
+    finals = result['records']['finalRecallResult']
+    finals = [{'kind':item['metadata']['kind'],'filename':item['file_name'],'title': item['title'], 'content':item['content'],
+        'score':item['score'], 'llm_relervance': 0} for item in finals]
+    new_data['finals'] = finals
 
 
 
@@ -127,7 +109,7 @@ if __name__ == "__main__":
     # 初始化客户端
     client = KbpRetrievalClient()
 
-    query="电视画面开机自动调节亮度怎么关掉"
+    query="HRB-550冰箱保鲜室有多大"
     # 执行检索
     result = client.retrieval(
         query=query,

@@ -6,36 +6,24 @@ from time import sleep
 from datetime import datetime
 from tqdm import tqdm  # 用于显示进度条
 import argparse  # 导入argparse模块
-from concurrent.futures import ThreadPoolExecutor, as_completed  # 并行执行
-from util.logger import LoggerConfig, logging
 
-main_filename = os.path.basename(__file__)
-logger_config = LoggerConfig(log_dir="./data/log", main_filename=main_filename, enable_file_logging=True)
-logger = logging.getLogger(__name__)
+
 
 # 配置信息集中管理
 CONFIG = {
     "es": {
-        "url": "http://10.18.219.171:9200",
-        "username": "elastic",
-        "password": "8ktbepQdRJVWjw@B",
-        "es_host":  "10.18.219.171:9200",
+        "url": "http://10.19.193.148:9200",
+        "es_host":  "10.19.193.148:9200",
         "indices": {
-            # "block_data": "hz-block-data-prod-000001",
-            # "segment_embedding": "hz-segment-embedding-data-000001",
-            # # "segment_embedding": "segment-tag-embedding-data-000001-1",
-            # "sentence_embedding": "hz-sentence-embedding-data-000001",
-            # "qna_embedding": "hz-qna-embedding-data-000001"
-            "block_data": "block-data-prod-000001-sss",
-            "segment_embedding": "segment-embedding-data-000001-sss",
-            "sentence_embedding": "sentence-embedding-data-000001-sss",
-            "qna_embedding": "qna-embedding-data-000001-sss"
+            "block_data": "tag-block-data-00000*",
+            "segment_embedding": "tag-segment-embedding-data-00000*",
+            # "segment_embedding": "segment-tag-embedding-data-000001-1",
+            "sentence_embedding": "tag-sentence-embedding-data-00000*",
+            "qna_embedding": "tag-qna-embedding-data-000001"
         },
-        "auth": ("elastic", "8ktbepQdRJVWjw@B"),
+        # 已移除认证信息
         # 动态生成当前时间戳（毫秒）
-        "current_timestamp": int(datetime.now().timestamp() * 1000),
-        "segment_embed_weight":0.5,
-        "tag_embed_weight":0.5
+        "current_timestamp": int(datetime.now().timestamp() * 1000)
     },
     # "es": {
     #     "url": "http://10.19.193.146:9200",
@@ -50,7 +38,8 @@ CONFIG = {
     #     "current_timestamp": int(datetime.now().timestamp() * 1000)
     # },
     "rerank_api": {
-        "url": "https://inner-apisix-test.hisense.com/hiaii/rerank?user_key=fnfxirc1nn1ccoagag7ckbheo9hfqdp8", #"http://10.19.98.208:4795/rerank", #"https://inner-apisix-test.hisense.com/hiaii/rerank?user_key=nrnwhmx4tkejvdptecujmlq9eclpugw0",
+        #"url": "https://inner-apisix-test.hisense.com/hiaii/rerank?user_key=fnfxirc1nn1ccoagag7ckbheo9hfqdp8",
+        "url": "http://localhost:8080/rerank",
         "headers": {
             "Content-Type": "application/json",
             #"Cookie": "BIGipServerPOOL_OCP_JUCLOUD_DEV80=!+tLUVeluJWXzlZLVZekhhPIyzDN0Vem6oMaHLCwK6cswdpAa2lBxosUP75seeZQfBYHlqA8nc+MiuYY="
@@ -75,14 +64,6 @@ CONFIG = {
             "headers": {
                 "Content-Type": "application/json",
                 "accept": "application/json"
-            }
-        }
-    },
-    "query_synonym_apis": {
-        "api1": {  #冷启动
-            "url": "http://10.18.231.31:32444/synonym_mapping",
-            "headers": {
-                "Content-Type": "application/json"
             }
         }
     }
@@ -117,7 +98,6 @@ def rewrite_query(original_query, api_name="api1"):
 
     api_config = CONFIG["query_rewrite_apis"][api_name]
 
-    response = None  # 预定义，避免未赋值引用
     try:
         if api_name == "api1":
             # 使用第一个API进行查询重写
@@ -228,60 +208,11 @@ def rewrite_query(original_query, api_name="api1"):
         print(f"查询重写API请求失败: {str(e)}", file=sys.stderr)
     except json.JSONDecodeError:
         print("查询重写API返回内容不是有效的JSON", file=sys.stderr)
-        if response is not None:
+        if 'response' in locals():
             print("响应内容:", response.text, file=sys.stderr)
 
     # 所有方法都失败时返回原始查询
     return original_query
-
-def synonym_map_query(original_query, api_name="api1"):
-    """
-    统一的同义词映射函数，通过api_name参数区分使用不同的API
-
-    参数:
-        original_query (str): 原始查询字符串
-        api_name (str): 要使用的API名称，可选值为"api1"或"api2"
-
-    返回:
-        str: 重写后的查询字符串
-    """
-    if api_name not in CONFIG["query_synonym_apis"]:
-        raise ValueError(f"不支持的API名称: {api_name}，可选值为{list(CONFIG['query_synonym_apis'].keys())}")
-
-    api_config = CONFIG["query_synonym_apis"][api_name]
-
-    response = None  # 预定义，避免未赋值引用
-    try:
-        if api_name == "api1":
-            # 使用第一个API进行查询重写
-            data = {"query": original_query}
-
-            response = requests.post(
-                url=api_config["url"],
-                headers=api_config["headers"],
-                data=json.dumps(data)
-            )
-            response.raise_for_status()
-            result = response.json()
-
-            # 解析API1返回结果
-            if result.get("code") == 200 and "result" in result:
-                # 假设API1返回的是子查询列表，用空格连接
-                return result['result']
-            else:
-                print(f"API1查询重写失败: {result.get('message', '未知错误')}", file=sys.stderr)
-                return original_query
-
-    except requests.exceptions.RequestException as e:
-        print(f"查询重写API请求失败: {str(e)}", file=sys.stderr)
-    except json.JSONDecodeError:
-        print("查询重写API返回内容不是有效的JSON", file=sys.stderr)
-        if response is not None:
-            print("响应内容:", response.text, file=sys.stderr)
-
-    # 所有方法都失败时返回原始查询
-    return original_query
-
 
 
 def merge_sorted_lists(list1, list2):
@@ -327,7 +258,7 @@ def query_elasticsearch(query_vector, query, size=20):
         包含查询结果的字典列表，如果请求失败则返回None
     """
     # 构建包含认证信息的请求URL
-    url = f"http://{CONFIG['es']['username']}:{CONFIG['es']['password']}@{CONFIG['es']['es_host']}/{CONFIG['es']['indices']['qna_embedding']}/_search"
+    url = f"http://{CONFIG['es']['es_host']}/{CONFIG['es']['indices']['qna_embedding']}/_search"
 
     # 获取当前时间戳（毫秒级）
     current_timestamp = int(datetime.now().timestamp() * 1000)
@@ -353,7 +284,7 @@ def query_elasticsearch(query_vector, query, size=20):
                     }
                 }],
                 "must": [{
-                    "match": {"qna_title": {"query": query,"analyzer": "search_analyzer"}}
+                    "match": {"qna_title": {"query": query}}
                 }]
             }
         },
@@ -371,7 +302,7 @@ def query_elasticsearch(query_vector, query, size=20):
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
         response_data = response.json()
-        print(response_data)
+        #print(response_data)
         # 处理返回结果
         result = []
         for hit in response_data['hits']['hits']:
@@ -395,13 +326,11 @@ def get_filename_by_block_id(target_block_id):
         url = f"{CONFIG['es']['url']}/{CONFIG['es']['indices']['block_data']}/_search"
         query_body = {
             "query": {"term": {"block_id": {"value": target_block_id}}},
-            "_source": ["fileName"]
         }
 
         response = requests.get(
             url,
             json=query_body,
-            auth=CONFIG['es']['auth'],
             params={"pretty": "true"}
         )
         response.raise_for_status()
@@ -415,65 +344,19 @@ def get_filename_by_block_id(target_block_id):
     except requests.exceptions.RequestException as e:
         return f"查询出错: {str(e)}"
 
-def merge_seg_result(seg_res, tag_res):
-    """合并segment_embedding和tag_embedding的结果"""
-    merged_results = {}
-    for res in seg_res:
-        content = res['content']
-        block_id = res['block_id']
-        score = res['score'] * CONFIG['es']['segment_embed_weight']
-        if block_id in merged_results:
-            merged_results[block_id]['score'] += score
-        else:
-            merged_results[block_id] = {'block_id': res.get('block_id'), 'doc_id': res.get('doc_id'), 'score': score,'content': content}
-    for res in tag_res:
-        content = res['content']
-        block_id = res['block_id']
-        score = res['score'] * CONFIG['es']['tag_embed_weight']
-        if block_id in merged_results:
-            merged_results[block_id]['score'] += score
-        else:
-            merged_results[block_id] = {'block_id': res.get('block_id'), 'doc_id': res.get('doc_id'), 'score': score,'content': content}
-    return list(merged_results.values())
 
 def search_segments_from_elasticsearch(query_vector, query_string):
-    """从Elasticsearch查询相关片段，使用KNN和文本匹配（并行查询segment_embedding与tag_embedding）"""
-    # 使用线程池并行发起两个查询
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_seg = executor.submit(
-            search_elasticsearch_generic,
-            index_name=CONFIG['es']['indices']['segment_embedding'],
-            vector_field="segment_embedding",
-            content_field="segment_content",
-            query_vector=query_vector,
-            query_string=query_string,
-            source_excludes=["sentence_embedding", "segment_embedding","tag_embedding"],
-            additional_fields=["block_id", "doc_id"]
-        )
-        future_tag = executor.submit(
-            search_elasticsearch_generic,
-            index_name=CONFIG['es']['indices']['segment_embedding'],
-            vector_field="tag_embedding",
-            content_field="segment_content",
-            query_vector=query_vector,
-            query_string=query_string,
-            source_excludes=["sentence_embedding", "segment_embedding","tag_embedding"],
-            additional_fields=["block_id", "doc_id"]
-        )
+    """从Elasticsearch查询相关片段，使用KNN和文本匹配"""
+    return search_elasticsearch_generic(
+        index_name=CONFIG['es']['indices']['segment_embedding'],
+        vector_field="segment_embedding",
+        content_field="segment_content",
+        query_vector=query_vector,
+        query_string=query_string,
+        source_excludes=["sentence_embedding", "segment_embedding"],
+        additional_fields=["block_id","doc_id"]
+    )
 
-        # 获取结果并进行None安全处理
-        try:
-            seg_res = future_seg.result()
-        except Exception as e:
-            print(f"segment_embedding 查询失败: {e}", file=sys.stderr)
-            seg_res = []
-        try:
-            tag_res = future_tag.result()
-        except Exception as e:
-            print(f"tag_embedding 查询失败: {e}", file=sys.stderr)
-            tag_res = []
-
-    return merge_seg_result(seg_res or [], tag_res or [])
 
 def query_es_by_segment_id(segment_id, dir_id):
     """根据segment_id和dir_id查询Elasticsearch文档"""
@@ -493,7 +376,6 @@ def query_es_by_segment_id(segment_id, dir_id):
 
         response = requests.post(
             url,
-            auth=CONFIG['es']['auth'],
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload)
         )
@@ -530,7 +412,6 @@ def query_es_by_block_id(block_id):
 
         response = requests.post(
             url,
-            auth=CONFIG['es']['auth'],
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload)
         )
@@ -582,12 +463,12 @@ def perform_reranking(query, documents, extra_infos=None):
 
                 for item in scores_with_index:
                     if not isinstance(item, dict) or 'index' not in item or 'relevance_score' not in item:
-                        logger.info(f"无效的重排序结果: {item}，跳过处理", file=sys.stderr)
+                        print(f"无效的重排序结果: {item}，跳过处理", file=sys.stderr)
                         continue
 
                     idx = item["index"]
                     if idx < 0 or idx >= len(documents):
-                        logger.info(f"无效的文档索引: {idx}，跳过处理", file=sys.stderr)
+                        print(f"无效的文档索引: {idx}，跳过处理", file=sys.stderr)
                         continue
 
                     docs_with_scores.append({
@@ -635,65 +516,39 @@ def search_elasticsearch(query_vector, search_query, size=20):
 
 def search_elasticsearch_generic(index_name, vector_field, content_field,
                                 query_vector, query_string, source_excludes,
-                                additional_fields,segment=None,size=20):
+                                additional_fields, size=20):
     """通用的Elasticsearch查询函数，减少代码重复"""
     try:
         url = f"{CONFIG['es']['url']}/{index_name}/_search"
-        if segment is not None:
-            payload = {
-                "_source": {"excludes": source_excludes},
-                "knn": {
-                    "k": 16,
-                    "boost": 24,
-                    "num_candidates": 100,
-                    "field": vector_field,
-                    "query_vector": query_vector
-                },
-                "query": {
-                    "bool": {
-                        "filter": [{
-                            "bool": {
-                                "must": [
-                                    {"range": {"effective_time": {"lt": CONFIG['es']['current_timestamp']}}},
-                                    {"range": {"expire_time": {"gt": CONFIG['es']['current_timestamp']}}}
-                                ]
-                            }
-                        }],
-                    }
-                },
-                "size": size
-            }
-        else:
-            payload = {
-                "_source": {"excludes": source_excludes},
-                "knn": {
-                    "k": 16,
-                    "boost": 24,
-                    "num_candidates": 100,
-                    "field": vector_field,
-                    "query_vector": query_vector
-                },
-                "query": {
-                    "bool": {
-                        "filter": [{
-                            "bool": {
-                                "must": [
-                                    {"range": {"effective_time": {"lt": CONFIG['es']['current_timestamp']}}},
-                                    {"range": {"expire_time": {"gt": CONFIG['es']['current_timestamp']}}}
-                                ]
-                            }
-                        }],
-                        "must": [{
-                            "match": {content_field: {"query": query_string, "analyzer": "search_analyzer"}}
-                        }]
-                    }
-                },
-                "size": size
-            }
+        payload = {
+            "_source": {"excludes": source_excludes},
+            "knn": {
+                "k": 16,
+                "boost": 24,
+                "num_candidates": 100,
+                "field": vector_field,
+                "query_vector": query_vector
+            },
+            "query": {
+                "bool": {
+                    "filter": [{
+                        "bool": {
+                            "must": [
+                                {"range": {"effective_time": {"lt": CONFIG['es']['current_timestamp']}}},
+                                {"range": {"expire_time": {"gt": CONFIG['es']['current_timestamp']}}}
+                            ]
+                        }
+                    }],
+                    "must": [{
+                        "match": {content_field: {"query": query_string}}
+                    }]
+                }
+            },
+            "size": size
+        }
 
         response = requests.post(
             url,
-            auth=CONFIG['es']['auth'],
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload)
         )
@@ -742,25 +597,23 @@ def process_items(items, segments, segments2file, segment2block):
 
     for item in items:
         if not isinstance(item, dict) or 'content' not in item or 'block_id' not in item:
-            logger.info(f"无效的条目格式: {item}，跳过处理", file=sys.stderr)
+            print(f"无效的条目格式: {item}，跳过处理", file=sys.stderr)
             continue
 
         content = item['content']
         block_id = item['block_id']
         segments.add(content)
         if content not in segment2block:
-            try:
-                # 在开发环境中，有时会出现查询失败的情况，使用try-except捕获异常
+            tmp_result = query_es_by_block_id(block_id)
+            if len(tmp_result) >0:
                 segment2block[content] = query_es_by_block_id(block_id)[0]['content']
-            except:
-                logger.info(f"脏数据block_id:{block_id}查询未果")
-                continue
+            else:
+                print(f'no block id:{block_id}')
+                segment2block[content] = ''
+                segments2file[''] = ''
+
         if content not in segments2file:
-            try:
-                segments2file[content] = get_filename_by_block_id(block_id)
-            except:
-                logger.info(f"脏数据block_id:{block_id}查询未果")
-                continue
+            segments2file[content] = get_filename_by_block_id(block_id)
 
 
 
@@ -781,7 +634,7 @@ def append_to_jsonl(file_path, data):
             json.dump(data, f, ensure_ascii=False)
             f.write('\n')
     except Exception as e:
-        logger.error(f"操作失败: {str(e)}")
+        print(f"操作失败: {str(e)}")
 
 
 def save_progress(progress_file, line_num):
@@ -795,7 +648,7 @@ def save_progress(progress_file, line_num):
         # 原子性替换文件
         os.replace(temp_file, progress_file)
     except Exception as e:
-        logger.error(f"保存进度失败: {str(e)}", file=sys.stderr)
+        print(f"保存进度失败: {str(e)}", file=sys.stderr)
 
 
 def load_progress(progress_file, load_progress_flag):
@@ -810,7 +663,7 @@ def load_progress(progress_file, load_progress_flag):
                 progress = json.load(f)
                 return progress.get("last_processed_line", 0)
     except Exception as e:
-        logger.error(f"加载进度失败，将从头开始: {str(e)}", file=sys.stderr)
+        print(f"加载进度失败，将从头开始: {str(e)}", file=sys.stderr)
     return 0
 
 
@@ -820,40 +673,36 @@ def count_total_lines(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             return sum(1 for line in f if line.strip())
     except Exception as e:
-        logger.error(f"计算总行数失败: {str(e)}", file=sys.stderr)
+        print(f"计算总行数失败: {str(e)}", file=sys.stderr)
         return 0
 
 
 def process_single_query(query, output_dir='output', use_rewrite=True, rewrite_api="api2"):
     """处理单个查询，返回处理是否成功"""
     # 1. 查询重写（根据参数决定是否启用及使用哪个API）
-    logger.info(f"=========当前用户query:{query}=============")
     new_querys = [query]  # 默认只有原始查询作为子查询
 
     if use_rewrite:
         success = False
         for i in range(10):
-            #先对query做同义词映射
-            mapped = synonym_map_query(query, "api1")
-
-            rewritten = rewrite_query(mapped, rewrite_api)
+            rewritten = rewrite_query(query, rewrite_api)
             if rewritten and rewritten['flag'] == 2:
                 new_querys = rewritten['queries']  # 获取子查询列表
                 success = True
                 break
             elif rewritten and rewritten['flag'] == 0:
                 # 不适合检索的查询，直接返回
-                logger.info('不检索，直接答！')
+                print('不检索，直接答！')
                 return True
             elif rewritten and rewritten['flag'] == 1:
                 # 不适合检索的查询，直接返回
-                logger.info('意图模糊拒绝答！')
+                print('意图模糊拒绝答！')
                 return True
-            logger.info(f"查询优化失败{rewritten}，重试 {i+1}/10", file=sys.stderr)
+            print(f"查询优化失败{rewritten}，重试 {i+1}/10", file=sys.stderr)
             sleep(i)
 
         if not success:
-            logger.info("查询优化多次失败，将使用原始查询继续", file=sys.stderr)
+            print("查询优化多次失败，将使用原始查询继续", file=sys.stderr)
             new_querys = [query]  # 回退到仅使用原始查询
 
     # 收集所有子查询的召回结果
@@ -869,12 +718,12 @@ def process_single_query(query, output_dir='output', use_rewrite=True, rewrite_a
 
     # 2. 对每个子查询执行召回操作
     for sub_query in new_querys:
-        logger.info(f"处理子查询: {sub_query}")
+        print(f"处理子查询: {sub_query}")
 
         # 2.1 文本向量化（使用子查询生成向量）
         vectors = vectorize_text([sub_query])
         if not vectors or 'data' not in vectors or not vectors['data']:
-            logger.info(f"子查询 '{sub_query}' 向量转换失败，跳过", file=sys.stderr)
+            print(f"子查询 '{sub_query}' 向量转换失败，跳过", file=sys.stderr)
             continue
         query_vector = vectors['data'][0]['value']
 
@@ -895,19 +744,14 @@ def process_single_query(query, output_dir='output', use_rewrite=True, rewrite_a
         if sentence_results and isinstance(sentence_results, list):
             for hit in sentence_results:
                 if not isinstance(hit, dict) or 'segment_id' not in hit or 'dir_id' not in hit:
-                    logger.info(f"无效的sentence结果: {hit}，跳过处理", file=sys.stderr)
+                    print(f"无效的sentence结果: {hit}，跳过处理", file=sys.stderr)
                     continue
 
                 segment_result = query_es_by_segment_id(hit['segment_id'], hit['dir_id'])
                 if not segment_result:
-                    logger.info(f"sentence查找segment未果，跳过处理，segment_id：{hit['segment_id']}, dir_id:{hit['dir_id']}")
                     continue
 
                 process_items(segment_result, all_segments, all_segments2file, all_segments2block)
-
-                if segment_result[0]['content'] not in all_segments2file:
-                    logger.info(f"sentence2segment2block未果，跳过处理")
-                    continue
                 item = {
                     'sentence': hit['content'],
                     'sentence_score': hit['score'],
@@ -919,30 +763,16 @@ def process_single_query(query, output_dir='output', use_rewrite=True, rewrite_a
                 all_sentence_results.append(item)
 
         # 2.4 直接检索segments（使用子查询）
-        # direct_segment_results = search_segments_from_elasticsearch(query_vector, sub_query)
-        # if direct_segment_results:
-        #     process_items(direct_segment_results, all_segments, all_segments2file, all_segments2block)
-        #     for hit in direct_segment_results:
-        #         item = {
-        #             'segment': hit['content'],
-        #             'segment_score': hit['score'],
-        #             'filename': all_segments2file.get(hit['content'], "未知文件名"),
-        #             'sub_query': sub_query
-        #         }
-        #         all_direct_segment_results.append(item)
-        # 2.5 由直接segment_embedding改为融合的embedidng检索
         direct_segment_results = search_segments_from_elasticsearch(query_vector, sub_query)
         if direct_segment_results:
             process_items(direct_segment_results, all_segments, all_segments2file, all_segments2block)
-            # if hit['content'] not in all_segments2file:
-            #     logger.info(f"direct segment2block未果，跳过处理")
-            #     continue
             for hit in direct_segment_results:
                 item = {
                     'segment': hit['content'],
                     'segment_score': hit['score'],
                     'filename': all_segments2file.get(hit['content'], "未知文件名"),
-                    'sub_query': sub_query
+                    'sub_query': sub_query,
+                    'block': all_segments2block[hit['content']]
                 }
                 all_direct_segment_results.append(item)
 
@@ -967,17 +797,19 @@ def process_single_query(query, output_dir='output', use_rewrite=True, rewrite_a
 
         all_direct_segments = [item['segment'] for item in all_direct_segment_results]
         docs = list(all_segments)
+        extra_info = [all_segments2file[doc] for doc in docs]
         # 使用子查询进行重排序
-        sorted_docs = perform_reranking(sub_query, docs)
+        sorted_docs = perform_reranking(sub_query, docs,extra_info)
         if not sorted_docs:
-            logger.info("片段重排序失败，无法继续", file=sys.stderr)
+            print("片段重排序失败，无法继续", file=sys.stderr)
             # 如果也没有QA结果，则返回失败
             if not all_sorted_qa:
                 return False
 
         # 补充文件名信息
         for item in sorted_docs:
-            item['filename'] = all_segments2file.get(item['document'], "未知文件名")
+            item['filename'] = all_segments2file[item['document']]
+            item['block'] = all_segments2block[item['document']]
 
         # 输出片段重排序结果
         result = {
@@ -986,11 +818,10 @@ def process_single_query(query, output_dir='output', use_rewrite=True, rewrite_a
             'rewrite_api_used': rewrite_api,
             'value': sorted_docs
         }
-        append_to_jsonl(f'{output_dir}/{sub_query}_rerank_result.jsonl', result)
+        append_to_jsonl(f'{output_dir}/subquery_rerank_result.jsonl', result)
 
         # 5. 对当前子查询的QA结果进行重排序（使用子查询而不是原始查询）
         current_sorted_qa = []
-        sorted_qa = []  # 保证后续使用时已定义
         if qa_pair:
             # 去重QA对
             unique_qa_pairs = []
@@ -1070,7 +901,7 @@ def main():
     # 添加互斥组：要么处理文件，要么处理单个查询
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('input_file', nargs='?', help='包含查询的JSONL文件路径')
-    group.add_argument('-q', '--query',default="冰箱公司冰冷研发中心总经理的岗位关键挑战？ ", help='单个查询内容')
+    group.add_argument('-q', '--query', help='单个查询内容')
 
     # 通用参数
     # 通用参数

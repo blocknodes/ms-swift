@@ -137,14 +137,15 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     client = SimpleLLMClient(llm_configs=LLM_CONFIGS, default_llm="gpt-4")
     query = data['query']
 
-    qna_cadidates = [{'score':item['score'], 'filename':'', 'content':item['content']+'\n'+item['filename']} for item in data['qna'][:3]]
-    candidates = data['doc'][:3] + qna_cadidates
+    #qna_cadidates = [{'score':item['score'], 'filename':'', 'content':item['content']+'\n'+item['filename']} for item in data['qna'][:3]]
+    candidates = data['finalRecallResult']
     #import pdb;pdb.set_trace()
-    candidates.sort(key=lambda x: x['score'], reverse=True)
+    #candidates.sort(key=lambda x: x['score'], reverse=True)
 
     for item in candidates[:3]:
+        #import pdb;pdb.set_trace()
         filename = item['filename']
-        block = item['content']
+        block = item['block_content'] if 'block_content' in item else f"{item['title']}\n{item['content']}"
 
         prompt = f"""
 你是一名专业的信息检索与问答评估专家。请根据用户提出的问题（query）和检索到的文本块（block）及其所在文件名（filename），从多维度严格判断该文本块与问题的相关性，并进行细粒度评分。请仅依据文本块本身内容进行判断，不考虑外部信息或来源。

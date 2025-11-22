@@ -153,34 +153,20 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
     if os.environ.get('ADD_FILENAMW'):
         concat_filename = True
 
-    top1s = []
-    remain_cadidates = []
-    for sub_query in data['recall']:
-        candidates = data['recall'][sub_query]
-        docs = []
-        for item in candidates:
-            #qd
-            if 'block_content' in item:
-                #import pdb;pdb.set_trace()
-                docs.append(f"{item['filename']}\n{item['seg_content']}")
-            else:
-                #import pdb;pdb.set_trace()
-                docs.append(f"{item['title']}")
-
-        results = client.do_rerank(sub_query, docs)
-        for i in range(len(candidates)):
-            #print(candidates[i]['score'])
-            #print(results[i]['score'])
-            candidates[i]['score'] = results[i]['score']
-        #import pdb;pdb.set_trace()
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        top1s.append(candidates[0])
-        remain_cadidates=remain_cadidates + candidates[1:]
-    remain_cadidates.sort(key=lambda x: x["score"], reverse=True)
-    finals = top1s+remain_cadidates[:3-len(top1s)]
-
-    data['finalRecallResult'] =  finals
-
+    #import pdb;pdb.set_trace()
+    finals = data['finals']
+    docs = []
+    for final in finals:
+        if final['kind'] == 'document':
+            docs.append(final['content'])
+        else:
+            assert final['kind'] == 'qna'
+            docs.append(final['title'])
+    results = client.do_rerank(data['query'], docs)
+    for i in range(len(finals)):
+        finals[i]['score'] = results[i]['score']
+    finals.sort(key=lambda x: x["score"], reverse=True)
+    data['finals'] =  finals
 
 
     return data

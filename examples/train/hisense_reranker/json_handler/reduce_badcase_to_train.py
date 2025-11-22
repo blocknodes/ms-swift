@@ -32,18 +32,11 @@ def execute_command(command: str) -> Dict[str, Any]:
     query = parsed_stdout['records']['splitQueryList'][0]
 
     qnas = parsed_stdout['records']['qnaRunResult']['qnaAfterRerankResult']
-    qnas = [{'filname' : item['fileName'], 'title':item['title'],
-     'content':item['content'], 'score':item['score'],"llm_relervance" : 0} for item in qnas[:5] if item['score']>0.5]
-
-    docs = parsed_stdout['records']['docRunResult']['segmentAfterRerankResult']
-    if docs == '':
-        docs = []
-    else:
-        docs = [{'filename':item['fileName'], 'content':item['segmentContent'], 'score':item['score'], "llm_relervance" : 0} for item in docs[:5] if item['score']>0.5]
+    #import pdb;pdb.set_trace()
 
     finals = parsed_stdout['records']['finalRecallResult']
-    finals = [{'kind':item['metadata']['kind'],'filename':item['file_name'], 'content':item['content'],
-        'score':item['score'],'title': item['title'], "llm_relervance" : 0} for item in finals]
+    finals = [{'kind':item['metadata']['kind'],'filename':item['file_name'],'title': item['title'], 'content':item['content'],
+        'score':item['score'], 'llm_relervance': 0} for item in finals]
 
     # 按score从高到低排序（原地排序）
     finals.sort(key=lambda x: x['score'], reverse=True)
@@ -51,9 +44,9 @@ def execute_command(command: str) -> Dict[str, Any]:
     # 返回包含命令执行信息的字典
     return {
         "query": query,
-        "qna": qnas,
-        "doc": docs,
-        #"finals": finals,
+        #"qna": qnas,
+        #"doc": docs,
+        "finals": finals[:],
 
 
     }
