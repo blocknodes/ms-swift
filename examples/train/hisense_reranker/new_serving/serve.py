@@ -16,7 +16,6 @@ from vllm.distributed.parallel_state import destroy_model_parallel
 from vllm.inputs.data import TokensPrompt
 import torch
 from log import init_logger
-import random
 
 # 初始化日志
 logger = init_logger("rerank.log")
@@ -29,73 +28,31 @@ app = FastAPI(title="Rerank Service (vllm backend)")
 class QADocs(BaseModel):
     query: Optional[str]
     documents: Optional[List[str]]
-    meta_data: Optional[str] = None  # 新增可选字段
+    filenames: Optional[List[str]] = None  # 新增可选字段
     instruction: Optional[str] = None      # 新增可选字段
+    flag: Optional[int] = 0                # 新增标志位(0:qd 1:qq)
 
+# ========== 全局变量 ==========
+tokenizer = None
+model = None
+suffix_tokens = None
+true_token = None
+false_token = None
+sampling_params = None
+max_length = 8192  # 最大序列长度
+MODEL_PATH = None   # 模型路径(通过命令行传入)
 
+# ========== 单例模式保持(用于兼容原有结构) ==========
+class Singleton(type):
+    _instances = {}
 
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
 
-
-class ReRanker():
-    def __init__(self, model_path):
-        self.load_model(model_path)
-
-    def load_model(self, model_path):
-        """启动时加载vllm模型和分词器"""
-
-        self.tokenizer = None
-        self.suffix_tokens = None
-        self.true_token = None
-        self.false_token = None
-        self.sampling_params = None
-        self.max_length = 8192  # 最大序
-        self.model_path = model_path
-
-        try:
-            if not model_path:
-                raise ValueError("未指定模型路径，请通过命令行参数传入")
-
-            logger.info(f"从路径加载模型: {model_path}")
-
-            # 确定GPU数量
-            number_of_gpu = torch.cuda.device_count()
-            logger.info(f"检测到 {number_of_gpu} 个GPU")
-
-            # 加载分词器
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.tokenizer.padding_side = "left"
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-
-            # 加载vllm模型
-            self.model = LLM(
-                model=model_path,
-                tensor_parallel_size=number_of_gpu,
-                max_model_len=self.max_length,
-                enable_prefix_caching=True,
-                gpu_memory_utilization=0.9
-            )
-
-            # 准备后缀和特殊token
-            suffix = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
-            self.suffix_tokens = self.tokenizer.encode(suffix, add_special_tokens=False)
-            self.true_token = self.tokenizer("yes", add_special_tokens=False).input_ids[0]
-            self.false_token = self.tokenizer("no", add_special_tokens=False).input_ids[0]
-
-            # 配置采样参数
-            self.sampling_params = SamplingParams(
-                temperature=0,
-                max_tokens=1,
-                logprobs=20,
-                allowed_token_ids=[self.true_token, self.false_token],
-            )
-
-
-
-        except Exception as e:
-            logger.error(f"模型加载失败: {str(e)}")
-            destroy_model_parallel()
-            gc.collect()
-            raise
+# ========== 重排序核心类(基于vllm) ==========
+class ReRanker(metaclass=Singleton):
     def preprocess(self, text: str) -> str:
         """文本预处理，保留原有的清洗逻辑"""
         if not text:
@@ -132,21 +89,22 @@ class ReRanker():
 
     def process_inputs(self, pairs, instruction):
         """处理输入为vllm所需格式"""
-
+        global tokenizer, max_length, suffix_tokens
 
         messages = [self.format_instruction(instruction, query, doc) for query, doc in pairs]
-        messages = self.tokenizer.apply_chat_template(
+        messages = tokenizer.apply_chat_template(
             messages,
             tokenize=True,
             add_generation_prompt=False,
             enable_thinking=False
         )
         # 截断并添加后缀
-        messages = [ele[:self.max_length - len(self.suffix_tokens)] + self.suffix_tokens for ele in messages]
+        messages = [ele[:max_length - len(suffix_tokens)] + suffix_tokens for ele in messages]
         return [TokensPrompt(prompt_token_ids=ele) for ele in messages]
 
     def compute(self, query: str, documents: List[str], instruction: str):
         """使用vllm模型计算相关性分数"""
+        global model, sampling_params, true_token, false_token
 
         if not query or not documents:
             return []
@@ -157,7 +115,7 @@ class ReRanker():
         inputs = self.process_inputs(pairs, instruction)
 
         try:
-            outputs = self.model.generate(inputs, self.sampling_params, use_tqdm=False)
+            outputs = model.generate(inputs, sampling_params, use_tqdm=False)
             scores = []
 
             for output in outputs:
@@ -165,8 +123,8 @@ class ReRanker():
                 final_logits = output.outputs[0].logprobs[-1]
 
                 # 获取"yes"和"no"的log概率
-                true_logit = final_logits[self.true_token].logprob if self.true_token in final_logits else -10.0
-                false_logit = final_logits[self.false_token].logprob if self.false_token in final_logits else -10.0
+                true_logit = final_logits[true_token].logprob if true_token in final_logits else -10.0
+                false_logit = final_logits[false_token].logprob if false_token in final_logits else -10.0
 
                 # 计算概率并归一化
                 true_score = math.exp(true_logit)
@@ -181,17 +139,73 @@ class ReRanker():
             raise
 
 # 实例化重排序器
-reranker = ReRanker(sys.argv[1])
-
-#reranker_qna = ReRanker(sys.argv[2])
-
-#rerankers=[reranker_doc,reranker_qna]
+reranker = ReRanker()
 
 # ========== 服务生命周期管理 ==========
+@app.on_event("startup")
+def load_model():
+    """启动时加载vllm模型和分词器"""
+    global tokenizer, model, suffix_tokens, true_token, false_token, sampling_params, MODEL_PATH
 
+    try:
+        if not MODEL_PATH:
+            raise ValueError("未指定模型路径，请通过命令行参数传入")
 
+        logger.info(f"从路径加载模型: {MODEL_PATH}")
 
+        # 确定GPU数量
+        number_of_gpu = torch.cuda.device_count()
+        logger.info(f"检测到 {number_of_gpu} 个GPU")
 
+        # 加载分词器
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+        tokenizer.padding_side = "left"
+        tokenizer.pad_token = tokenizer.eos_token
+
+        # 加载vllm模型
+        model = LLM(
+            model=MODEL_PATH,
+            tensor_parallel_size=number_of_gpu,
+            max_model_len=max_length,
+            enable_prefix_caching=True,
+            gpu_memory_utilization=0.8
+        )
+
+        # 准备后缀和特殊token
+        suffix = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        suffix_tokens = tokenizer.encode(suffix, add_special_tokens=False)
+        true_token = tokenizer("yes", add_special_tokens=False).input_ids[0]
+        false_token = tokenizer("no", add_special_tokens=False).input_ids[0]
+
+        # 配置采样参数
+        sampling_params = SamplingParams(
+            temperature=0,
+            max_tokens=1,
+            logprobs=20,
+            allowed_token_ids=[true_token, false_token],
+        )
+
+        # 模型预热
+        test_query = "test query"
+        test_docs = ["test document"]
+        test_instruction = "Test instruction"
+        test_scores = reranker.compute(test_query, test_docs, test_instruction)
+        logger.info("模型预热成功")
+
+    except Exception as e:
+        logger.error(f"模型加载失败: {str(e)}")
+        destroy_model_parallel()
+        gc.collect()
+        raise
+
+@app.on_event("shutdown")
+def shutdown_model():
+    """关闭时释放模型资源"""
+    global model
+    if model is not None:
+        destroy_model_parallel()
+        gc.collect()
+        logger.info("模型资源已释放")
 
 # ========== API 路由 ==========
 @app.get("/health")
@@ -203,14 +217,11 @@ async def handle_post_request(docs: QADocs):
     start_time = time.time()
     try:
         logger.info("收到重排序请求")
-        meta_data=docs.meta_data
 
         # 验证输入
         if not docs.query or not docs.documents:
             logger.warning("查询或文档列表为空")
             return {"code": 0, "data": []}
-
-
 
         # 文档去重
         unique_docs, original_indices = reranker.clear_and_duplicate(docs)
@@ -248,7 +259,7 @@ async def handle_post_request(docs: QADocs):
 
         # 记录处理时间
         elapsed_time = time.time() - start_time
-        logger.info(f"请求处理成功，耗时 {elapsed_time:.3f} 秒. 请求内容: {json.dumps(docs.dict(), ensure_ascii=False)}")
+        logger.info(f"请求处理成功，耗时 {elapsed_time:.3f} 秒. 请求内容: {json.dumps(docs.dict(), ensure_ascii=False)}. 响应内容: {response_data}")
         return response_data
 
     except Exception as e:
@@ -264,11 +275,11 @@ if __name__ == "__main__":
             logger.error("请提供模型路径作为第一个命令行参数")
             sys.exit(1)
 
-        model_path = sys.argv[1]
+        MODEL_PATH = sys.argv[1]
         # 端口配置(默认8080)
         PORT = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 8080
 
-        logger.info(f"启动服务，端口: {PORT}，模型路径: {model_path}")
+        logger.info(f"启动服务，端口: {PORT}，模型路径: {MODEL_PATH}")
         uvicorn.run(app, host='0.0.0.0', port=PORT, reload=False)
     except Exception as e:
         logger.error(f"服务启动失败: {str(e)}")

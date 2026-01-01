@@ -91,7 +91,11 @@ class RerankClient:
                         batch_docs = documents[current_position:current_position + actual_batch_size]
 
                     result = self.rerank_batch(query, batch_docs, instruction)
-                    batch_scores = result.get("scores", [])
+                    #import pdb;pdb.set_trace()
+                    if "scores" in result:
+                        batch_scores = result.get("scores", [])
+                    else:
+                        batch_scores = [item['relevance_score'] for item in result['data'][0]['value']]
 
                     if len(batch_scores) != len(batch_docs):
                         raise ValueError(f"返回的分数数量({len(batch_scores)})与文档数量({len(batch_docs)})不匹配")

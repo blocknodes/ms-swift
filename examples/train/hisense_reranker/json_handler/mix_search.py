@@ -98,7 +98,7 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
 
     finals = result['records']['finalRecallResult']
     finals = [{'kind':item['metadata']['kind'],'filename':item['file_name'],'title': item['title'], 'content':item['content'],
-        'score':item['score'], 'llm_relervance': 0} for item in finals]
+        'category_path':item['category_path'],'score':item['score'], 'human_judge': 0} for item in finals]
     new_data['finals'] = finals
 
 
