@@ -30,7 +30,7 @@ app = FastAPI(title="Rerank Service (vllm backend)")
 
 # ===================== 新增：BM25 客户端 =====================
 class precise_matchingClient:
-    """BM25接口客户端（调用独立部署的BM25 FastAPI服务）"""
+    """precise_matching接口客户端（调用独立部署的precise_matching FastAPI服务）"""
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
@@ -49,11 +49,11 @@ class precise_matchingClient:
         b: float = 0.75
     ) -> List[float]:
         """
-        同步调用BM25接口获取归一化得分
+        同步调用precise_matching接口获取归一化得分
         :param query: 查询语句
         :param documents: 文档列表
-        :param k1: BM25参数k1
-        :param b: BM25参数b
+        :param k1: precise_matching参数k1
+        :param b: precise_matching参数b
         :return: 每个文档的归一化得分列表
         """
         try:
@@ -72,7 +72,7 @@ class precise_matchingClient:
             result = response.json()
             return result["normalized_scores"]
         except Exception as e:
-            logger.error(f"调用BM25接口失败: {str(e)}")
+            logger.error(f"调用precise_matching接口失败: {str(e)}")
             # 降级策略：返回全1分（不影响最终融合结果）
             return [1.0 for _ in documents]
 
@@ -80,11 +80,12 @@ class precise_matchingClient:
         self,
         query: str,
         documents: List[str],
+        meta_data: List[dict],
         k1: float = 0.2,
         b: float = 0.75
     ) -> List[float]:
         """
-        异步调用BM25接口获取归一化得分（适配FastAPI异步环境）
+        异步调用precise_matching接口获取归一化得分（适配FastAPI异步环境）
         """
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
@@ -93,6 +94,7 @@ class precise_matchingClient:
                     json={
                         "query": query,
                         "documents": documents,
+                        "meta_data": meta_data,
                         "k1": k1,
                         "b": b
                     },
@@ -102,7 +104,7 @@ class precise_matchingClient:
                     result = await response.json()
                     return result["normalized_scores"],result['weights']['alpha']
         except Exception as e:
-            logger.error(f"异步调用BM25接口失败: {str(e)}")
+            logger.error(f"异步调用precise_matching接口失败: {str(e)}")
             return [1.0 for _ in documents], 0
 
 # ===================== 原有代码（仅修改BM25相关部分） =====================
@@ -267,7 +269,7 @@ class ReRanker():
         # 初始化precise_matching客户端（指定独立部署的precise_matching服务地址）
         self.precise_matching_client = precise_matchingClient(
             base_url="http://localhost:8000",  # 替换为实际的precise_matching服务地址
-            timeout=1
+            timeout=2
         )
 
     def preprocess(self, text: str) -> str:
@@ -342,7 +344,8 @@ class ReRanker():
 
         precise_matching_scores,alpha = await self.precise_matching_client.async_get_precise_matching_scores(
             query=query,
-            documents=docs_for_precise_matching        )
+            documents=docs_for_precise_matching,
+            meta_data=meta_data)
         logger.info(f"precise_matching得分: {precise_matching_scores}")
 
         # 3. 分数融合（原有逻辑）

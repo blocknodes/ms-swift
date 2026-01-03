@@ -99,12 +99,23 @@ class AsyncChatCompletionClient:
         """
         # 使用指定模型或默认模型
         target_model = model or self.default_model
+        items = [query]+content_list
+        json_format='''{"p":product,"m":model,"k":[]}'''
+        all_prompts = [
+            f'''{item}\n提取这句话中的家电产品类别、型号和关键词，以json形式{json_format}形式输出，没有对应字段置空'''
+            for item in items
+        ]
+
+        for item in items:
+
+            prompt = f'''{item}\n提取这句话中的家电产品类别、型号和关键词，以json形式{json_format}形式输出，没有对应字段置空'''
+
         requests = [
             {
                 "model": target_model,
                 "messages": [{"role": "user", "content": content}],** kwargs
             }
-            for content in [query]+content_list
+            for content in all_prompts
         ]
         tasks = [
             self.create_chat_completion(**req)
@@ -112,7 +123,10 @@ class AsyncChatCompletionClient:
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         results = [item['choices'][0]['message']['content'] for item in results]
-        return json.loads(results[0])
+        print(results)
+        results = [json.loads(item.split('<think>\n\n</think>\n\n')[1]) for item in results]
+
+        return results
 
 
 # 正则模式定义
@@ -149,6 +163,7 @@ class ChinesePreciseMatching:
         self.stop_words = set(['的', '了', '是', '在', '和', '有', '我', '也', '很', '就', '/','pdf','vip'])
         self.whitelist = set(['实时','开机','关机','电视','空调','激光电视','进水', '排水', '洗衣机', '洗碗机'])
         self.conflict_map={'空调':['油烟机']}
+        self.productlist = set(['油烟机','冰箱','空调','电视','平板电视','洗衣机','冷柜','洗碗机','变温柜','电热水器','燃气灶','投影'])
         self._preprocess()
         self._calc_avgdl()
         self._calc_idf()
@@ -188,10 +203,24 @@ class ChinesePreciseMatching:
         for word, df in self.word_count.items():
             self.idf[word] = math.log((N - df + 0.5) / (df + 0.5) + 1)
 
-    def get_score(self, query: str, doc_idx: int, meta_data: dict) -> float:
+    def get_score(self, query: str, doc_idx: int, meta_data: List[dict]) -> float:
         """计算单个文档的精准匹配得分"""
         doc = self.corpus[doc_idx]
         doc_length = len(doc)
+        query_product = meta_data[0]['p']
+        query_model = meta_data[0]['m']
+        doc_product = meta_data[1]['p']
+        doc_model = meta_data[1]['m']
+
+        if query_product not in self.productlist:
+            query_product = None
+        if doc_product not in self.productlist:
+            doc_product  = None
+
+        if query_product and doc_product and query_product!= doc_product:
+            print(f'$$$$${query_product} vs {doc_product}')
+            return self.model_cutoff
+
         model = meta_data['model'] if 'model' in meta_data else None
         print(self.corpus[doc_idx])
         print(f'#### model is {model}#####')
@@ -223,11 +252,11 @@ class ChinesePreciseMatching:
             score += self.idf[word] * (tf * (self.k1 + 1)) / denominator
         return score
 
-    def get_normalized_scores(self, query: str, meta_data: dict) -> List[float]:
+    def get_normalized_scores(self, query: str, meta_data: List[dict]) -> List[float]:
         """获取所有文档的归一化得分（0-1）"""
         # 计算原始得分
 
-        raw_scores = [self.get_score(query, i, meta_data) for i in range(len(self.documents))]
+        raw_scores = [self.get_score(query, i, [meta_data[0],meta_data[i+1]]) for i in range(len(self.documents))]
         #return raw_scores
 
         # 处理空值和相同值情况
@@ -259,6 +288,7 @@ class PreciseMatchingRequest(BaseModel):
     """精准匹配检索请求模型"""
     query: str  # 查询语句
     documents: List[str]  # 文档集合
+    meta_data: Optional[List[dict]] = None
     k1: float = 0.2  # 精准匹配参数k1
     b: float = 0.75   # 精准匹配参数b
 
@@ -276,12 +306,30 @@ async def precise_matching_rank(request: PreciseMatchingRequest = Body(...)):
     - 输出：每个文档的归一化得分（0-1）、得分统计信息
     """
     # 初始化精准匹配
+    print(f'#############{request.meta_data}')
+    content_list=[]
+    for item in request.meta_data:
+        if item['kind'] == 'document':
+            filename = item['fileName']
+            if filename:
+                content_list.append(item['fileName'])
+            else:
+                content_list.append('')
+    if request.meta_data[0]['kind'] == 'qna':
+        content_list=request.documents
+
+    assert len(content_list) == len(request.documents)
+
 
     ranked_results =await AsyncChatCompletionClient().batch_requests(
                 query = request.query,
-                content_list=[]
+                content_list=content_list
             )
+    assert len(content_list)+1 == len(ranked_results)
 
+    for i in range(len(content_list)):
+        if content_list[i] == '':
+            ranked_results[i] = None
     precise_matching = ChinesePreciseMatching(
         documents=request.documents,
         k1=request.k1,
