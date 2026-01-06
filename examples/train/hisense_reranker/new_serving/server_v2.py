@@ -33,7 +33,7 @@ class precise_matchingClient:
     """precise_matching接口客户端（调用独立部署的precise_matching FastAPI服务）"""
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: str = "http://10.18.231.45:32563",
         timeout: int = 30,
         headers: Optional[Dict[str, str]] = None
     ):
@@ -268,7 +268,7 @@ class ReRanker():
         self.filter_client = AsyncChatCompletionClient()
         # 初始化precise_matching客户端（指定独立部署的precise_matching服务地址）
         self.precise_matching_client = precise_matchingClient(
-            base_url="http://localhost:8000",  # 替换为实际的precise_matching服务地址
+            base_url="http://10.18.231.45:32563",  # 替换为实际的precise_matching服务地址
             timeout=2
         )
 
@@ -352,7 +352,10 @@ class ReRanker():
 
         beta=1-alpha
         for i in range(len(ranked_results['scores'])):
-            ranked_results['scores'][i] = alpha * precise_matching_scores[i] + beta * ranked_results['scores'][i]
+            if precise_matching_scores[i]==0:
+                ranked_results['scores'][i]=0
+            else:
+                ranked_results['scores'][i] = alpha * precise_matching_scores[i] + beta * ranked_results['scores'][i]
 
         return ranked_results['scores']
 
