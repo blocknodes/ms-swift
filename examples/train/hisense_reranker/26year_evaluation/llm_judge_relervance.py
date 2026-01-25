@@ -134,20 +134,22 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
     # 创建客户端
-    client = SimpleLLMClient(llm_configs=LLM_CONFIGS, default_llm="gpt-4")
+    client = SimpleLLMClient(llm_configs=LLM_CONFIGS, default_llm="deepseek-v3")
     query = data['query']
 
-    qna_cadidates = [{'score':item['score'], 'filename':'', 'content':item['content']+'\n'+item['filename']} for item in data['qna'][:3]]
-    candidates = data['doc'][:3] + qna_cadidates
+    #qna_cadidates = [{'score':item['score'], 'filename':'', 'content':item['content']+'\n'+item['filename']} for item in data['qna'][:3]]
+    candidates = data['segments']
     #import pdb;pdb.set_trace()
-    candidates.sort(key=lambda x: x['score'], reverse=True)
+    #candidates.sort(key=lambda x: x['score'], reverse=True)
 
-    for item in candidates[:3]:
-        filename = item['filename']
-        block = item['content']
+    finals = []
+
+    for item in candidates:
+        #filename = item['filename']
+        block = item
 
         prompt = f"""
-你是一名专业的信息检索与问答评估专家。请根据用户提出的问题（query）和检索到的文本块（block）及其所在文件名（filename），从多维度严格判断该文本块与问题的相关性，并进行细粒度评分。请仅依据文本块本身内容进行判断，不考虑外部信息或来源。
+你是一名专业的信息检索与问答评估专家。请根据用户提出的问题（query）和检索到的文本块（block），从多维度严格判断该文本块与问题的相关性，并进行细粒度评分。请仅依据文本块本身内容进行判断，不考虑外部信息或来源。
 
 请综合考虑以下方面：
 1. 主体一致性：文本块内容结合文件名是否与问题的主语和核心主体高度一致。只有当内容紧密围绕问题主体展开，才可视为相关。
@@ -168,7 +170,6 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
 - 排除泛泛描述、主观评价、无事实或操作支持的内容。
 输入：
 用户问题（query）：{query}
-文本块所在文件名（filename）：{filename}
 检索文本块（block）：{block}
 
 请将你的相关性评分以如下严格的 JSON 格式输出，无需其他说明，示例：
@@ -187,16 +188,13 @@ def example_processor(data: Dict[str, Any]) -> Dict[str, Any]:
         )
 
 
+        #print(f'####{response}')
+        score = json.loads(response['choices'][0]['message']['content'])['score']
+        finals.append({'content':item, 'llm_judge_score':score})
 
-        item['llm_relervance'] = json.loads(response['choices'][0]['message']['content'])['score']
-
+        #import pdb;pdb.set_trace()
 
     new_data = {}
     new_data['query'] = query
-    new_data['top3'] = candidates[:3]
-    if new_data['top3'][0]['llm_relervance'] >=8 :
-        new_data['hit1'] = True
-        return new_data
-    if new_data['top3'][1]['llm_relervance'] >=8 or new_data['top3'][2]['llm_relervance'] >=8:
-        new_data['hit3'] = True
+    new_data['finals'] = finals
     return new_data
