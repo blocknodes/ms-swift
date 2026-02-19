@@ -584,58 +584,32 @@ if __name__ == "__main__":
 
 
     for i in tqdm(range(10000), desc="执行循环", unit="次"):
-        fields = random.sample(list(air_condioner.keys()), k=2)
-        sub_dict = {key: air_condioner[key] for key in fields}
-        condition_property_name = fields[1]
-        if condition_property_name not in air_condioner_db_values.keys():
-            continue
-        condition_property_value = random.sample(air_condioner_db_values[condition_property_name], k=1)[0]
-        goal_dict = {'targets':[fields[0]], 'condition':[{"property_name":condition_property_name, "property_value":condition_property_value, "op":"="}]}
+        random_models = random.sample(air_condioner_db_values["salesModelName"], k=3)
+        random_models='，'.join(random_models)
 
-        print(fields)
-        template_str = "\n".join([f"{k}: {v}" for k, v in sub_dict.items()])
 
-        prompt = f"""任务描述： 你是一个数据合成专家：以下是数据的schema和json。
+        prompt = f"""任务描述： 你是一个数据合成专家：以下是数据的schema。
 schema：
-    "outerPackLengthMm": "外包装尺寸(长,mm)，例如 Decimal('1430')，Decimal('560')",
-    "outerPackWidthMm": "外包装尺寸(宽,mm)，例如 Decimal('930')，Decimal('400')",
-    "outerPackHeightMm": "外包装尺寸(高,mm)，例如 Decimal('200')，Decimal('780')",
-    "grossWeightKg": "毛重(kg)，例如 Decimal('25')，Decimal('8.500')",
-    "netWeightKg": "净重(kg)，例如 Decimal('22')，Decimal('7.500')",
-    "colorName": "颜色名称，例如 亚瑟银H200号，星云灰340号 等",
-    "productPositionName": "产品定位名称，例如 高端，中端，低端，1档，2档，3档等",
-    "domesticExportSaleName": "内销/外销名称，例如 内销，外销",
-    "productFamilyName": "产品家族名称，例如 M，U，Q等",
-    "productSeriesName": "产品系列名称，例如 日立U享系列， 约克UD系列，XD3",
-    "productModelName": "产品型号名称，例如 HKG-05DA/SG220XYBN#B，YUOH360VAEMCQ等",
-    "salesModelName": "销售型号名称，例如 YVOH260VAEMBQ，YVOH800VAEMCQ等",
-    "salesModelLifeCycleStatusName": "销售型号生命周期状态名称，例如 退市准备，开发，上市，立项，作废等",
-    "salesAreaCode": "销售区域编码，例如 US，CN，AE 等",
-    "salesAreaName": "销售区域名称，例如 中国，美国，德国 等",
-    "promotionName": "推广名，例如 容声288S1，大薄荷E52Q等",
+    "salesModelName": "销售型号名称，例如{random_models}等",
     "salesBrandName": "销售品牌名称，例如 Hisense，gorenje，KELON，Vidda，Ronshen等",
-    "productBigCategoryName": "大类名称，例如 显示类产品，清洁卫生器具等",
-    "productMidCategoryName": "中类名称，包含字符串：电视、投影、显示器、冰箱、冷柜、洗衣机、烘干机、空调、灶具、热水器",
-    "productSmallCategoryName": "小类名称，例如平板电视、激光电视、波轮式洗衣机、滚筒式洗衣机等",
     "salesPriceYuan": "销售价格(元)",
-    "actualSalesDate": "实际销售时间",
+    "actualSalesDate": "实际销售时间，如：2025-12-16，2023-01-04等",
     "energy_efficiency_class": "能效等级，例如1级，2级，3级",
-    "product_width_mm": "产品尺寸(宽,mm)，例如 800，900",
-    "product_height_mm": "产品尺寸(高,mm)，例如 300，400",
+
     "frequency_type": "变频/定频，例如 变频， 定频",
-    "product_depth_mm": "产品尺寸(深,mm)",
-    "main_body_color": "外观主体颜色，例如紫砂咖，烟紫金，莫奈金等",
-    "indoor_unit_model": "内机产品型号，例如KFR-72L/QZ1-X1A(2X03)，KFR-35GW/EFVAA1+1U35E3A等",
-    "outdoor_unit_model": "外机产品型号，例如KFR-35W/H3V7X1(1X41)，KFR-72LW/H3V7X1(2X41)等",
-    "noise_dba": "噪音(dB(A))，例如 45， 55",
     "air_conditioner_type": "空调柜机或挂机，例如柜机、挂机",
     "air_conditioner_horsepower": "空调匹数，例如1匹、2匹、3匹"
 json字段说明：
-targets：询问的目标属性
-conditions: 过滤的条件
-{json.dumps(goal_dict,ensure_ascii=False)}
+targets：询问的目标属性，必选字段
+conditions: 过滤的条件，可选字段
 
-根据以上json,合成对应的问题，问题要简洁且全面，仅输出问题，切勿输出其他内容，问题中要包含空调两个字.
+
+
+根据以上schema,合成对应的问题，问题要全面反映target 和condition，问题中要包含空调两个字.
+示例1:
+{{"query":"KL-500B3C6/F空调的颜色是什么","targets":["productModelName"],"conditions":[{{"property_name":"salesModelName","property_value":"KL-500B3C6/F","op":"="}}]}}
+
+请输出一条json
 """
     # 发送请求
         messages = [{"role": "user", "content": prompt}]
@@ -647,23 +621,16 @@ conditions: 过滤的条件
         )
 
 
-        #print(f'{prompt}:\n{response["choices"]}')
+        print(f'{prompt}:\n{response["choices"][0]["message"]["content"]}')
         for item in response['choices']:
-            query = item['message']['content']
-            for condition in goal_dict['condition']:
-                if condition["property_value"] not in query:
-                    print(f'discards:\nquery:{query}\n{json.dumps(goal_dict,ensure_ascii=False)}')
-                    continue
+            result = item['message']['content']
+            if result.startswith('```json'):
+                result=result.split('```json')[1].split('```')[0]
+            result = json.loads(result)
 
-            output ={'instruction':'','input':query, 'output': json.dumps(goal_dict,ensure_ascii=False)}
+            output ={'instruction':'','input':result['query'], 'output': json.dumps(result,ensure_ascii=False)}
 
-            print(output)
+            #print(output)
             write_to_jsonl(output)
 
-    # 方式2：手动管理连接
-    # db = MySQLClient(**db_config)
-    # try:
-    #     db.connect()
-    #     sample_data = db.sample_fields(table="your_table", fields=["field1", "field2"], sample_size=20)
-    # finally:
     #     db.close()

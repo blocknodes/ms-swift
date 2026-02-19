@@ -513,6 +513,45 @@ register_dataset(
         preprocess_func=CoundownTaskPreprocessor(),
         tags=['math']))
 
+class JsonPrecisionPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+
+        target = row.pop('response')
+        input = row.pop('input')
+        row.pop('instruction', None)
+        prompt = f'''任务描述： 你是一个结构化信息提取专家：以下是数据的schema。
+schema：
+"salesModelName": "销售型号名称，例如 YVOH260VAEMBQ，YVOH800VAEMCQ等",
+"salesBrandName": "销售品牌名称，例如 Hisense，gorenje，KELON，Vidda，Ronshen等",
+"salesPriceYuan": "销售价格(元)",
+"actualSalesDate": "实际销售时间",
+"energy_efficiency_class": "能效等级，例如1级，2级，3级",
+"frequency_type": "变频/定频，例如 变频， 定频",
+"air_conditioner_type": "空调柜机或挂机，例如柜机、挂机",
+"air_conditioner_horsepower": "空调匹数，例如1匹、2匹、3匹"
+"other": "其他属性，比如产地、材质等"
+json字段说明：
+targets：询问的目标属性，必选字段
+conditions: 过滤的条件，可选字段
+根据以上schema,提取query中的结构化信息，无法提取返回空
+示例1:
+query : KL-500B3C6/F这款空调的价格是？
+提取的结构化信息为：{{"target":["salesPriceYuan"],"conditions":[{{"property_name":"salesModelName","property_value":"KL-500B3C6/F","op":"="}}]}}
+
+请提取如下query中的结构化信息：
+query：{input}'''
+
+        row.update({'target': target, 'query': prompt})
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='dingbo/Json-Precision',
+        subsets=['default'],
+        preprocess_func=JsonPrecisionPreprocessor(),
+        tags=['math']))
 
 class HC3Preprocessor(ResponsePreprocessor):
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
