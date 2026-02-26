@@ -253,14 +253,33 @@ if __name__ == "__main__":
                 cleaned_text = merged_refs[i].replace('\n', ' ')
                 result += f"{i}. {cleaned_text}\n\n"
 
-            prompt = f"""任务描述： 你是一个问答专家：以下是用户问题和召回的documents:
-用户问题：{orig_query}
-documents:
-{result}
-请根据当前召回的documents输出对应的结果，以json表示，具体要求如下：
-1. 如果当前召回结果满足用户的query，直接输出对应的reference和answer:如：{{"ref":[0,3],"answer": answer}}
-2. 如果当前召回结果不满足用户的query，输出有用的reference，并给予前面输出的reference，输出以及需要补充的subquery：{{"ref":[1],"need_retrieve":[subquery1,subquer2...]}}
-3. ref要严格对应序号，没有的话置[],不要输出多余字符，仅json
+            prompt = f"""任务描述： 你是一个任务规划专家，你需要将用户的问题分解成原子问题，并生成json格式的DAG任务图。
+格式如下：
+任务定义： {{"toolname":tool,"param":[param1,param2...]}}
+当前可以使用的tool list:
+toolname:search
+params: [query1,query2...]
+
+toolname:output
+param: None
+
+示例1: 用户query: U8的分辨率是都少？
+输出:{{"tasks":[{{"id":1,"toolname":"search","params":["U8的分辨率"]}},
+{{"id":2,"toolname":"output"}}],
+"dependencies":{{2:[1]]}} }}
+示例2: 用户query: U8和U7哪个分辨率高
+输出:{{"tasks":[{{"id":1,"toolname":"search","params":["U8的分辨率"]}},
+{{"id":2,"toolname":"search","params":["U7的分辨率"]}},
+{{"id":3,"toolname":"output"}}],
+"dependencies":{{3:[1],3:[1]}} }}
+示例3: 用户query: 查询2025年上市的大三匹的带有新风功能的空调的卖点
+输出:{{"tasks":[{{"id":1,"toolname":"search","params":["2025年上市的大三匹的带有新风功能的空调型号"]}},
+{{"id":2,"toolname":"search","params":["根据[1]的结果，查询对应空调的卖点"]}},
+{{"id":3,"toolname":"output"}}],
+"dependencies":{{2:[1],3:[2]}} }}
+
+注意：所有任务必须包含output节点
+用户问题：{query}
 """
             # 发送请求
             messages = [{"role": "user", "content": prompt}]
@@ -277,7 +296,7 @@ documents:
             print(f'query:{query}\nprompt:{prompt}\n{response}')
             ## parse the response and continue to
             #response = json.loads(response.split('</think>\n\n')[1])
-            response = response.split('</think>\n\n')[1]
+            #response = response.split('</think>\n\n')[1]
             #print(f'!!!!!\n{response}')
             response = json.loads(response)
             refs = response['ref']
